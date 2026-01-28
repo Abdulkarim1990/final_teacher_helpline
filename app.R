@@ -764,213 +764,330 @@ get_dashboard_stats <- function(con, region_id = NULL) {
 
 
 
-# UI Definition with Enhanced Case Details
-ui <- dashboardPage(
-  dashboardHeader(
-    title = "GES Teacher Support Helpline",
-    tags$li(class = "dropdown",
+# UI Definition with Landing Page, Authentication, and Role-Based Access
+ui <- tagList(
+  useShinyjs(),
+
+  # ========================================
+  # LANDING PAGE OVERLAY
+  # ========================================
+  div(id = "landing_overlay",
+    style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #2c5aa0 70%, #1e40af 100%); overflow-y: auto;",
+
+    # Top navigation bar
+    div(style = "padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;",
+      div(
+        tags$img(src = "https://upload.wikimedia.org/wikipedia/en/thumb/8/89/Coat_of_arms_of_Ghana.svg/100px-Coat_of_arms_of_Ghana.svg.png",
+                 height = "50px", style = "margin-right: 15px; vertical-align: middle;"),
+        tags$span("GES Teacher Support Helpline", style = "color: white; font-size: 22px; font-weight: bold; vertical-align: middle;")
+      ),
+      div(
+        actionButton("landing_analytics_btn", "View Analytics",
+                     class = "btn", style = "background: transparent; border: 2px solid white; color: white; margin-right: 10px; padding: 8px 24px; border-radius: 25px; font-weight: 600;"),
+        actionButton("landing_login_btn", "Staff Login",
+                     class = "btn", style = "background: white; color: #1e3a8a; border: 2px solid white; padding: 8px 24px; border-radius: 25px; font-weight: 600;")
+      )
+    ),
+
+    # Hero section
+    div(style = "text-align: center; padding: 80px 40px 60px 40px; max-width: 900px; margin: 0 auto;",
+      tags$h1("Ghana Education Service", style = "color: white; font-size: 48px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px;"),
+      tags$h2("Teacher Support Helpline", style = "color: #93c5fd; font-size: 28px; font-weight: 400; margin-bottom: 30px;"),
+      tags$p("A centralized query tracking and case management system serving teachers across all 16 regions of Ghana. Log cases, track resolutions, and monitor performance in real-time.",
+             style = "color: #cbd5e1; font-size: 18px; line-height: 1.7; max-width: 700px; margin: 0 auto 40px auto;"),
+
+      div(style = "display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;",
+        actionButton("hero_login_btn", "Staff Login",
+                     class = "btn btn-lg", style = "background: #f59e0b; color: #0f172a; border: none; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 700; box-shadow: 0 4px 15px rgba(245,158,11,0.4);"),
+        actionButton("hero_analytics_btn", "View Public Analytics",
+                     class = "btn btn-lg", style = "background: transparent; border: 2px solid #93c5fd; color: #93c5fd; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 600;")
+      )
+    ),
+
+    # Feature cards
+    div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 60px 40px; max-width: 1200px; margin: 0 auto;",
+      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("headset")),
+        tags$h3("Case Management", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+        tags$p("Log, track, and resolve teacher queries efficiently across all regions.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      ),
+      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("chart-line")),
+        tags$h3("Real-Time Analytics", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+        tags$p("Public dashboards showing regional performance, SLA monitoring, and trend analysis.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      ),
+      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("shield-alt")),
+        tags$h3("Role-Based Access", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+        tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      )
+    ),
+
+    # Footer
+    div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
+      tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0;")
+    )
+  ),
+
+  # ========================================
+  # LOGIN OVERLAY
+  # ========================================
+  hidden(
+    div(id = "login_overlay",
+      style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%); display: flex; align-items: center; justify-content: center;",
+
+      div(style = "background: white; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
+
+        # Back button
+        div(style = "margin-bottom: 20px;",
+          actionButton("login_back_btn", icon("arrow-left"), label = " Back to Home",
+                       class = "btn btn-link", style = "color: #6b7280; padding: 0; font-size: 14px; text-decoration: none;")
+        ),
+
+        div(style = "text-align: center; margin-bottom: 30px;",
+          tags$div(icon("user-shield"), style = "font-size: 48px; color: #1e3a8a; margin-bottom: 15px;"),
+          tags$h2("Staff Login", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 5px 0;"),
+          tags$p("Sign in with your GES email address", style = "color: #6b7280; margin: 0; font-size: 14px;")
+        ),
+
+        div(
+          textInput("login_email", "Email Address", placeholder = "enquiry.region@gmail.com",
+                    width = "100%"),
+          passwordInput("login_password", "Password", placeholder = "Enter your password",
+                        width = "100%"),
+          br(),
+          actionButton("login_btn", "Sign In", class = "btn btn-primary btn-block",
+                       style = "width: 100%; padding: 12px; font-size: 16px; font-weight: 600; background: #1e3a8a; border-color: #1e3a8a; border-radius: 8px;"),
+          br(), br(),
+          div(style = "text-align: center;",
+            tags$span(id = "login_msg_display", style = "color: #dc2626; font-weight: 500;",
+                      textOutput("login_msg", inline = TRUE))
+          )
+        )
+      )
+    )
+  ),
+
+  # ========================================
+  # MAIN DASHBOARD (hidden until login or analytics)
+  # ========================================
+  hidden(
+    div(id = "main_app",
+      dashboardPage(
+        dashboardHeader(
+          title = "GES Teacher Support Helpline",
+          tags$li(class = "dropdown",
+                  tags$style(HTML("
+                    .main-header .navbar {background-color: #1e3a8a !important;}
+                    .main-header .logo {background-color: #0f172a !important;}
+                    .content-wrapper {background-color: #f8fafc;}
+                  "))
+          ),
+          # User info and logout in header
+          tags$li(class = "dropdown",
+                  uiOutput("user_info_header")
+          )
+        ),
+
+        dashboardSidebar(
+          sidebarMenu(
+            id = "sidebar_menu",
+
+            # These menu items are conditionally shown via server-side rendering
+            uiOutput("sidebar_menu_items")
+          ),
+
+          # Quick Case Lookup in sidebar (only visible when logged in)
+          uiOutput("sidebar_quick_search")
+        ),
+
+        dashboardBody(
+          use_theme(mytheme),
+
+          # Enhanced CSS for modern styling and case details
+          tags$head(
             tags$style(HTML("
-              .main-header .navbar {background-color: #1e3a8a !important;}
-              .main-header .logo {background-color: #0f172a !important;}
-              .content-wrapper {background-color: #f8fafc;}
+              .content-wrapper, .right-side {
+                background-color: #f8fafc;
+              }
+
+              .info-box {
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                border: none;
+                margin-bottom: 20px;
+              }
+
+              .box {
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                border: none;
+              }
+
+              .btn-primary {
+                background-color: #2563eb;
+                border-color: #2563eb;
+              }
+
+              .case-code {
+                font-weight: bold;
+                color: #1e3a8a;
+                cursor: pointer;
+              }
+
+              .case-code:hover {
+                text-decoration: underline;
+              }
+
+              .priority-high { color: #dc2626; font-weight: bold; }
+              .priority-medium { color: #ea580c; font-weight: bold; }
+              .priority-low { color: #16a085; font-weight: bold; }
+              .priority-urgent { color: #7c2d12; font-weight: bold; }
+
+              .badge {
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+              }
+
+              .status-new { background-color: #3b82f6; color: white; }
+              .status-in-progress { background-color: #f59e0b; color: white; }
+              .status-waiting-on-teacher { background-color: #8b5cf6; color: white; }
+              .status-escalated { background-color: #dc2626; color: white; }
+              .status-resolved { background-color: #16a085; color: white; }
+              .status-closed { background-color: #6b7280; color: white; }
+
+              .sla-overdue { color: #dc2626; font-weight: bold; }
+              .sla-due-soon { color: #ea580c; font-weight: bold; }
+              .sla-on-track { color: #16a085; }
+
+              .case-details-header {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%);
+                color: white;
+                padding: 20px;
+                border-radius: 8px 8px 0 0;
+                margin: -15px -15px 20px -15px;
+              }
+
+              .case-info-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 20px;
+                margin-bottom: 20px;
+              }
+
+              .info-card {
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                border-left: 4px solid #2563eb;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+
+              .info-label {
+                font-weight: bold;
+                color: #374151;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 5px;
+              }
+
+              .info-value {
+                color: #1f2937;
+                font-size: 14px;
+              }
+
+              .timeline-item {
+                border-left: 3px solid #e5e7eb;
+                padding-left: 15px;
+                margin-bottom: 15px;
+                position: relative;
+              }
+
+              .timeline-item:before {
+                content: '';
+                position: absolute;
+                left: -6px;
+                top: 5px;
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background-color: #3b82f6;
+              }
+
+              .timeline-content {
+                background: white;
+                padding: 12px;
+                border-radius: 6px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+              }
+
+              .timeline-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 5px;
+              }
+
+              .timeline-action {
+                font-weight: bold;
+                color: #1e3a8a;
+              }
+
+              .timeline-date {
+                font-size: 11px;
+                color: #6b7280;
+              }
+
+              .timeline-text {
+                font-size: 13px;
+                color: #374151;
+                line-height: 1.4;
+              }
+
+              .modal-xl {
+                width: 95%;
+                max-width: 1200px;
+              }
+
+              .user-header-info {
+                color: white;
+                padding: 10px 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+              }
+              .user-header-info .user-name {
+                font-weight: 600;
+                font-size: 13px;
+              }
+              .user-header-info .user-role {
+                font-size: 11px;
+                opacity: 0.8;
+              }
             "))
-    )
-  ),
-  
-  dashboardSidebar(
-    sidebarMenu(
-      id = "sidebar_menu",
+          ),
 
-      menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt")),
-      menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
-      menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
-      menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
-    ),
+          # Case Details Modal
+          tags$div(id = "caseDetailsModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                   tags$div(class = "modal-dialog modal-xl", role = "document",
+                            tags$div(class = "modal-content",
+                                     tags$div(class = "modal-body", style = "padding: 0;",
+                                              uiOutput("case_details_content")
+                                     ),
+                                     tags$div(class = "modal-footer",
+                                              actionButton("closeCaseDetails", "Close", class = "btn btn-default")
+                                     )
+                            )
+                   )
+          ),
 
-    # Quick Case Lookup in sidebar
-    hr(),
-    div(style = "padding: 10px 15px;",
-        h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
-        textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
-        actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
-    )
-  ),
-  
-  dashboardBody(
-    useShinyjs(),
-    use_theme(mytheme),
-    
-    # Enhanced CSS for modern styling and case details
-    tags$head(
-      tags$style(HTML("
-        .content-wrapper, .right-side {
-          background-color: #f8fafc;
-        }
-        
-        .info-box {
-          border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          border: none;
-          margin-bottom: 20px;
-        }
-        
-        .box {
-          border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-          border: none;
-        }
-        
-        .btn-primary {
-          background-color: #2563eb;
-          border-color: #2563eb;
-        }
-        
-        .case-code {
-          font-weight: bold;
-          color: #1e3a8a;
-          cursor: pointer;
-        }
-        
-        .case-code:hover {
-          text-decoration: underline;
-        }
-        
-        .priority-high { color: #dc2626; font-weight: bold; }
-        .priority-medium { color: #ea580c; font-weight: bold; }
-        .priority-low { color: #16a085; font-weight: bold; }
-        .priority-urgent { color: #7c2d12; font-weight: bold; }
-        
-        .badge {
-          padding: 4px 8px;
-          border-radius: 4px;
-          font-size: 11px;
-          font-weight: bold;
-        }
-        
-        .status-new { background-color: #3b82f6; color: white; }
-        .status-in-progress { background-color: #f59e0b; color: white; }
-        .status-waiting-on-teacher { background-color: #8b5cf6; color: white; }
-        .status-escalated { background-color: #dc2626; color: white; }
-        .status-resolved { background-color: #16a085; color: white; }
-        .status-closed { background-color: #6b7280; color: white; }
-        
-        .sla-overdue { color: #dc2626; font-weight: bold; }
-        .sla-due-soon { color: #ea580c; font-weight: bold; }
-        .sla-on-track { color: #16a085; }
-        
-        .case-details-header {
-          background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%);
-          color: white;
-          padding: 20px;
-          border-radius: 8px 8px 0 0;
-          margin: -15px -15px 20px -15px;
-        }
-        
-        .case-info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 20px;
-          margin-bottom: 20px;
-        }
-        
-        .info-card {
-          background: white;
-          padding: 15px;
-          border-radius: 8px;
-          border-left: 4px solid #2563eb;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .info-label {
-          font-weight: bold;
-          color: #374151;
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin-bottom: 5px;
-        }
-        
-        .info-value {
-          color: #1f2937;
-          font-size: 14px;
-        }
-        
-        .timeline-item {
-          border-left: 3px solid #e5e7eb;
-          padding-left: 15px;
-          margin-bottom: 15px;
-          position: relative;
-        }
-        
-        .timeline-item:before {
-          content: '';
-          position: absolute;
-          left: -6px;
-          top: 5px;
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background-color: #3b82f6;
-        }
-        
-        .timeline-content {
-          background: white;
-          padding: 12px;
-          border-radius: 6px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .timeline-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 5px;
-        }
-        
-        .timeline-action {
-          font-weight: bold;
-          color: #1e3a8a;
-        }
-        
-        .timeline-date {
-          font-size: 11px;
-          color: #6b7280;
-        }
-        
-        .timeline-text {
-          font-size: 13px;
-          color: #374151;
-          line-height: 1.4;
-        }
-        
-        .modal-xl {
-          width: 95%;
-          max-width: 1200px;
-        }
-      "))
-    ),
-    
-    # NEW: Case Details Modal
-    tags$div(id = "caseDetailsModal", class = "modal fade", tabindex = "-1", role = "dialog",
-             tags$div(class = "modal-dialog modal-xl", role = "document",
-                      tags$div(class = "modal-content",
-                               tags$div(class = "modal-body", style = "padding: 0;",
-                                        uiOutput("case_details_content")
-                               ),
-                               tags$div(class = "modal-footer",
-                                        actionButton("closeCaseDetails", "Close", class = "btn btn-default")
-                               )
-                      )
-             )
-    ),
-    
-    
-    
-    
-    tabItems(
-      # Dashboard Tab with sub-tabs
-      tabItem(
-        tabName = "dashboard",
+          tabItems(
+            # Dashboard Tab with sub-tabs
+            tabItem(
+              tabName = "dashboard",
         tabsetPanel(
           # Case Summary Tab
           tabPanel(
@@ -1324,16 +1441,245 @@ ui <- dashboardPage(
       ####
     )
   )
-)
+) # end dashboardPage
+    ) # end div#main_app
+  ) # end hidden
+) # end tagList (ui)
 
 # Server Logic with Enhanced Case Management
 server <- function(input, output, session) {
-  # Reactive connection
-  
-  
-  
-  
+
+  # ========================================
+  # Authentication & Page State Management
+  # ========================================
+  rv <- reactiveValues(
+    logged_in = FALSE,
+    user = NULL,
+    page_state = "landing"  # "landing", "login", "analytics", "dashboard"
+  )
+
+  # --- Landing page button handlers ---
+  observeEvent(input$landing_login_btn, { rv$page_state <- "login" })
+  observeEvent(input$hero_login_btn, { rv$page_state <- "login" })
+  observeEvent(input$landing_analytics_btn, { rv$page_state <- "analytics" })
+  observeEvent(input$hero_analytics_btn, { rv$page_state <- "analytics" })
+  observeEvent(input$login_back_btn, {
+    rv$page_state <- "landing"
+    output$login_msg <- renderText("")
+  })
+
+  # --- Observe page state changes and show/hide overlays ---
+  observeEvent(rv$page_state, {
+    state <- rv$page_state
+
+    if (state == "landing") {
+      shinyjs::show("landing_overlay")
+      shinyjs::hide("login_overlay")
+      shinyjs::hide("main_app")
+    } else if (state == "login") {
+      shinyjs::hide("landing_overlay")
+      shinyjs::show("login_overlay")
+      shinyjs::hide("main_app")
+    } else if (state == "analytics") {
+      shinyjs::hide("landing_overlay")
+      shinyjs::hide("login_overlay")
+      shinyjs::show("main_app")
+      # Navigate to analytics tab
+      updateTabItems(session, "sidebar_menu", selected = "analytics")
+    } else if (state == "dashboard") {
+      shinyjs::hide("landing_overlay")
+      shinyjs::hide("login_overlay")
+      shinyjs::show("main_app")
+      updateTabItems(session, "sidebar_menu", selected = "dashboard")
+    }
+  })
+
+  # --- Login handler ---
+  get_user_by_email <- function(conn, email) {
+    DBI::dbGetQuery(conn, "
+      SELECT user_id, full_name, email, role, region_id, is_active, password_hash
+      FROM users
+      WHERE LOWER(email) = LOWER(?)
+      LIMIT 1
+    ", params = list(email))
+  }
+
+  is_allowlisted <- function(conn, email) {
+    out <- DBI::dbGetQuery(conn, "
+      SELECT email, is_active
+      FROM login_allowlist
+      WHERE LOWER(email) = LOWER(?)
+      LIMIT 1
+    ", params = list(email))
+    nrow(out) == 1 && isTRUE(out$is_active[1] == 1)
+  }
+
+  can_see_all_regions <- function(role) {
+    role %in% c("National Admin", "National Resolver")
+  }
+
+  # Log activity helper
+  log_activity <- function(conn, user_id, action, details = NULL) {
+    tryCatch({
+      DBI::dbExecute(conn,
+        "INSERT INTO login_audit (email, user_id, success, reason)
+         VALUES ((SELECT email FROM users WHERE user_id = ?), ?, 1, ?)",
+        params = list(user_id, user_id, paste0("ACTION: ", action, if (!is.null(details)) paste0(" | ", details) else ""))
+      )
+    }, error = function(e) {
+      # Silently fail on activity logging errors
+    })
+  }
+
+  observeEvent(input$login_btn, {
+    req(input$login_email, input$login_password)
+    email <- trimws(tolower(input$login_email))
+    pwd <- input$login_password
+
+    tryCatch({
+      poolWithTransaction(pool, function(conn) {
+
+        if (!is_allowlisted(conn, email)) {
+          try(DBI::dbExecute(conn,
+            "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
+            params = list(email, "Email not allowlisted or inactive")
+          ), silent = TRUE)
+          output$login_msg <- renderText("Access denied. Email not authorized.")
+          return()
+        }
+
+        u <- get_user_by_email(conn, email)
+        if (nrow(u) == 0 || !isTRUE(u$is_active[1] == 1)) {
+          try(DBI::dbExecute(conn,
+            "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
+            params = list(email, "User missing or inactive")
+          ), silent = TRUE)
+          output$login_msg <- renderText("Account not available.")
+          return()
+        }
+
+        ok <- FALSE
+        try({ ok <- bcrypt::checkpw(pwd, u$password_hash[1]) }, silent = TRUE)
+
+        if (!isTRUE(ok)) {
+          try(DBI::dbExecute(conn,
+            "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 0, ?)",
+            params = list(email, u$user_id[1], "Invalid password")
+          ), silent = TRUE)
+          output$login_msg <- renderText("Invalid credentials.")
+          return()
+        }
+
+        # Successful login
+        try(DBI::dbExecute(conn,
+          "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Login successful')",
+          params = list(email, u$user_id[1])
+        ), silent = TRUE)
+
+        # Update last_login
+        try(DBI::dbExecute(conn,
+          "UPDATE users SET last_login = NOW() WHERE user_id = ?",
+          params = list(u$user_id[1])
+        ), silent = TRUE)
+
+        rv$logged_in <- TRUE
+        rv$user <- u[1, ]
+        rv$page_state <- "dashboard"
+        output$login_msg <- renderText("")
+      })
+    }, error = function(e) {
+      output$login_msg <- renderText("Connection error. Please try again.")
+    })
+  })
+
+  # --- Logout handler ---
+  observeEvent(input$logout_btn, {
+    if (!is.null(rv$user)) {
+      tryCatch({
+        log_activity(pool, rv$user$user_id, "Logout")
+      }, error = function(e) {})
+    }
+    rv$logged_in <- FALSE
+    rv$user <- NULL
+    rv$page_state <- "landing"
+    updateTextInput(session, "login_email", value = "")
+    updateTextInput(session, "login_password", value = "")
+  })
+
+  # --- Back to landing from analytics (for non-logged-in users) ---
+  observeEvent(input$back_to_landing_btn, {
+    rv$page_state <- "landing"
+  })
+
+  # --- Auth reactive output (for conditionalPanel if needed) ---
+  output$auth <- reactive({ isTRUE(rv$logged_in) })
+  outputOptions(output, "auth", suspendWhenHidden = FALSE)
+
+  # --- User info in header ---
+  output$user_info_header <- renderUI({
+    if (isTRUE(rv$logged_in) && !is.null(rv$user)) {
+      div(class = "user-header-info",
+        div(
+          div(class = "user-name", rv$user$full_name),
+          div(class = "user-role", rv$user$role)
+        ),
+        actionButton("logout_btn", "Logout", class = "btn btn-sm",
+                     style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+      )
+    } else {
+      div(class = "user-header-info",
+        actionButton("header_login_btn", "Staff Login", class = "btn btn-sm",
+                     style = "background: #f59e0b; color: #0f172a; border: none; border-radius: 4px; font-weight: 600;"),
+        actionButton("back_to_landing_btn", "Home", class = "btn btn-sm",
+                     style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+      )
+    }
+  })
+
+  observeEvent(input$header_login_btn, { rv$page_state <- "login" })
+
+  # --- Dynamic Sidebar Menu ---
+  output$sidebar_menu_items <- renderUI({
+    if (isTRUE(rv$logged_in)) {
+      # Logged-in users see all menu items
+      tagList(
+        menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt")),
+        menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
+        menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
+        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
+      )
+    } else {
+      # Non-logged-in users (analytics-only) see only analytics
+      tagList(
+        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"), selected = TRUE)
+      )
+    }
+  })
+
+  # --- Quick Case Lookup (only for logged-in users) ---
+  output$sidebar_quick_search <- renderUI({
+    if (isTRUE(rv$logged_in)) {
+      tagList(
+        hr(),
+        div(style = "padding: 10px 15px;",
+          h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
+          textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
+          actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
+        )
+      )
+    }
+  })
+
+  # --- Helper: Get user's allowed region_id for filtering ---
+  user_region_id <- reactive({
+    if (!isTRUE(rv$logged_in) || is.null(rv$user)) return(NULL)
+    if (can_see_all_regions(rv$user$role)) return(NULL)  # NULL = see all
+    return(rv$user$region_id)
+  })
+
+  # ========================================
   # Reactive data (existing)
+  # ========================================
   categories <- reactive({
     get_categories(con())
   })
@@ -1354,12 +1700,24 @@ server <- function(input, output, session) {
   # NEW: Selected case reactive for details view
   selected_case_id <- reactiveVal(NULL)
   
-  # UI outputs (existing ones)
+  # UI outputs - region select respects user's assigned region
   output$region_select_ui <- renderUI({
     regions_df <- regions()
-    selectInput("region_select", "Region *",
-                choices = setNames(regions_df$region_id, regions_df$region_name),
-                selected = 1)
+    forced_region <- user_region_id()
+
+    if (!is.null(forced_region)) {
+      # Regional users can only create cases for their region
+      region_row <- regions_df[regions_df$region_id == forced_region, ]
+      selectInput("region_select", "Region *",
+                  choices = setNames(region_row$region_id, region_row$region_name),
+                  selected = forced_region)
+    } else {
+      # National staff can select any region
+      default_sel <- if (!is.null(rv$user) && !is.null(rv$user$region_id)) rv$user$region_id else 1
+      selectInput("region_select", "Region *",
+                  choices = setNames(regions_df$region_id, regions_df$region_name),
+                  selected = default_sel)
+    }
   })
   
   output$channel_select_ui <- renderUI({
@@ -1394,17 +1752,36 @@ server <- function(input, output, session) {
     }
   })
   
-  # Filter UI outputs (existing)
+  # Filter UI outputs - region-restricted based on user role
   output$my_region_filter_ui <- renderUI({
     regions_df <- regions()
-    selectInput("my_region_filter", "Region Filter",
-                choices = c("All Regions" = 0, setNames(regions_df$region_id, regions_df$region_name)))
+    forced_region <- user_region_id()
+
+    if (!is.null(forced_region)) {
+      # Regional users can only see their own region
+      region_row <- regions_df[regions_df$region_id == forced_region, ]
+      selectInput("my_region_filter", "Region Filter",
+                  choices = setNames(region_row$region_id, region_row$region_name),
+                  selected = forced_region)
+    } else {
+      selectInput("my_region_filter", "Region Filter",
+                  choices = c("All Regions" = 0, setNames(regions_df$region_id, regions_df$region_name)))
+    }
   })
-  
+
   output$all_region_filter_ui <- renderUI({
     regions_df <- regions()
-    selectInput("all_region_filter", "Region Filter",
-                choices = c("All Regions" = 0, setNames(regions_df$region_id, regions_df$region_name)))
+    forced_region <- user_region_id()
+
+    if (!is.null(forced_region)) {
+      region_row <- regions_df[regions_df$region_id == forced_region, ]
+      selectInput("all_region_filter", "Region Filter",
+                  choices = setNames(region_row$region_id, region_row$region_name),
+                  selected = forced_region)
+    } else {
+      selectInput("all_region_filter", "Region Filter",
+                  choices = c("All Regions" = 0, setNames(regions_df$region_id, regions_df$region_name)))
+    }
   })
   
   output$all_category_filter_ui <- renderUI({
@@ -1417,11 +1794,12 @@ server <- function(input, output, session) {
   auto_refresh_timer <- reactiveTimer(300000)  # 300,000 ms = 5 minutes
   dashboard_stats_invalidator <- reactiveVal(0)
 
-  # Dashboard KPIs (auto-refreshing)
+  # Dashboard KPIs (auto-refreshing) - filtered by user's region
   dashboard_stats <- reactive({
     auto_refresh_timer()
     dashboard_stats_invalidator()
-    get_dashboard_stats(con())
+    forced_region <- user_region_id()
+    get_dashboard_stats(con(), region_id = forced_region)
   })
   
   output$total_cases <- renderInfoBox({
@@ -1594,6 +1972,8 @@ server <- function(input, output, session) {
     )
     
     if (success) {
+      uid <- current_user_id()
+      tryCatch({ log_activity(pool, uid, "Create Case", paste("Teacher:", input$teacher_name)) }, error = function(e) {})
       updateTextInput(session, "teacher_name", value = "")
       updateTextInput(session, "teacher_phone", value = "")
       updateTextInput(session, "teacher_staff_id", value = "")
@@ -1619,11 +1999,12 @@ server <- function(input, output, session) {
     updateSelectInput(session, "priority", selected = "Medium")
   })
   
-  # Data tables (existing with modification for case details click)
+  # Data tables with role-based region access control
   recent_cases_data <- reactive({
-    fetch_tickets(con(), limit = 10)
+    forced_region <- user_region_id()
+    fetch_tickets(con(), region_id = forced_region, limit = 10)
   })
-  
+
   my_cases_data <- reactive({
     input$refresh_my_cases
     status_val <- if(is.null(input$my_status_filter) || input$my_status_filter == "All") {
@@ -1631,9 +2012,12 @@ server <- function(input, output, session) {
     } else {
       input$my_status_filter
     }
-    fetch_tickets(con(), region_id = input$my_region_filter, status_filter = status_val)
+    # Enforce region restriction: regional users always filtered to their region
+    forced_region <- user_region_id()
+    region_filter <- if (!is.null(forced_region)) forced_region else input$my_region_filter
+    fetch_tickets(con(), region_id = region_filter, status_filter = status_val)
   })
-  
+
   all_cases_data <- reactive({
     input$refresh_all_cases
     status_val <- if(is.null(input$all_status_filter) || input$all_status_filter == "All") {
@@ -1654,7 +2038,11 @@ server <- function(input, output, session) {
     date_from_val <- if(is.null(input$all_date_from) || is.na(input$all_date_from)) NULL else input$all_date_from
     date_to_val <- if(is.null(input$all_date_to) || is.na(input$all_date_to)) NULL else input$all_date_to
 
-    fetch_tickets(con(), region_id = input$all_region_filter, status_filter = status_val,
+    # Enforce region restriction: regional users always filtered to their region
+    forced_region <- user_region_id()
+    region_filter <- if (!is.null(forced_region)) forced_region else input$all_region_filter
+
+    fetch_tickets(con(), region_id = region_filter, status_filter = status_val,
                   category_id = cat_val, search_text = search_val,
                   date_from = date_from_val, date_to = date_to_val)
   })
@@ -2055,14 +2443,19 @@ server <- function(input, output, session) {
     runjs("$('#addNoteSection').show();")
   })
   
+  # Helper to get current user ID (defaults to 1 if not logged in)
+  current_user_id <- reactive({
+    if (isTRUE(rv$logged_in) && !is.null(rv$user)) rv$user$user_id else 1
+  })
+
   observeEvent(input$start_progress_btn, {
     if (!is.null(selected_case_id())) {
-      success <- update_case_status(con(), selected_case_id(), "In Progress", "Case work started", 1)
+      uid <- current_user_id()
+      success <- update_case_status(con(), selected_case_id(), "In Progress", "Case work started", uid)
       if (success) {
-        # Refresh the case details
+        tryCatch({ log_activity(pool, uid, "Start Progress", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#caseDetailsModal').modal('hide');")
         showNotification("Case status updated to In Progress", type = "message")
-        # Trigger refresh of data tables
         shinyjs::click("refresh_my_cases")
         shinyjs::click("refresh_all_cases")
       }
@@ -2071,18 +2464,16 @@ server <- function(input, output, session) {
   
   observeEvent(input$confirm_status_update, {
     if (!is.null(input$new_status) && !is.null(selected_case_id())) {
-      success <- update_case_status(con(), selected_case_id(), input$new_status, 
-                                    if(!is.null(input$status_notes) && input$status_notes != "") input$status_notes else NULL, 
-                                    1)
+      uid <- current_user_id()
+      success <- update_case_status(con(), selected_case_id(), input$new_status,
+                                    if(!is.null(input$status_notes) && input$status_notes != "") input$status_notes else NULL,
+                                    uid)
       if (success) {
-        # Hide the status update section
+        tryCatch({ log_activity(pool, uid, paste("Status Update:", input$new_status), paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#statusUpdateSection').hide();")
-        # Clear the form
         updateTextAreaInput(session, "status_notes", value = "")
-        # Close modal and refresh tables
         runjs("$('#caseDetailsModal').modal('hide');")
         showNotification(paste("Case status updated to:", input$new_status), type = "message")
-        # Trigger refresh of data tables
         shinyjs::click("refresh_my_cases")
         shinyjs::click("refresh_all_cases")
       }
@@ -2097,15 +2488,16 @@ server <- function(input, output, session) {
     updateTextAreaInput(session, "status_notes", value = "")
   })
   
-  # NEW: Add Note Handlers
+  # Add Note Handlers
   observeEvent(input$confirm_add_note, {
     if (!is.null(input$note_text) && nchar(input$note_text) >= 5) {
       if (!is.null(selected_case_id())) {
-        success <- add_case_note(con(), selected_case_id(), input$note_text, 1)
+        uid <- current_user_id()
+        success <- add_case_note(con(), selected_case_id(), input$note_text, uid)
         if (success) {
+          tryCatch({ log_activity(pool, uid, "Add Note", paste("Case ID:", selected_case_id())) }, error = function(e) {})
           updateTextAreaInput(session, "note_text", value = "")
           runjs("$('#addNoteSection').hide();")
-          # Refresh case details by closing and reopening modal
           runjs("$('#caseDetailsModal').modal('hide');")
         }
       }
@@ -2119,14 +2511,15 @@ server <- function(input, output, session) {
     updateTextAreaInput(session, "note_text", value = "")
   })
   
-  # NEW: Escalate case handler
+  # Escalate case handler
   observeEvent(input$escalate_case_btn, {
     if (!is.null(selected_case_id())) {
-      success <- update_case_status(con(), selected_case_id(), "Escalated", "Case escalated for further review", 1)
+      uid <- current_user_id()
+      success <- update_case_status(con(), selected_case_id(), "Escalated", "Case escalated for further review", uid)
       if (success) {
+        tryCatch({ log_activity(pool, uid, "Escalate Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#caseDetailsModal').modal('hide');")
         showNotification("Case escalated successfully", type = "warning")
-        # Trigger refresh of data tables
         shinyjs::click("refresh_my_cases")
         shinyjs::click("refresh_all_cases")
       }
@@ -2144,9 +2537,10 @@ server <- function(input, output, session) {
       return()
     }
     if (!is.null(selected_case_id())) {
+      uid <- current_user_id()
       # Update status to Resolved
       success <- update_case_status(con(), selected_case_id(), "Resolved",
-                                    input$resolution_notes, 1)
+                                    input$resolution_notes, uid)
       if (success) {
         # Save satisfaction rating
         tryCatch({
@@ -2161,6 +2555,7 @@ server <- function(input, output, session) {
           showNotification(paste("Resolved but failed to save rating:", e$message), type = "warning")
         })
 
+        tryCatch({ log_activity(pool, uid, "Resolve Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#resolveRatingSection').hide();")
         runjs("$('#caseDetailsModal').modal('hide');")
         updateTextAreaInput(session, "resolution_notes", value = "")
@@ -2189,8 +2584,9 @@ server <- function(input, output, session) {
       return()
     }
     if (!is.null(selected_case_id())) {
+      uid <- current_user_id()
       success <- update_case_status(con(), selected_case_id(), "In Progress",
-                                    paste("Case reopened:", input$reopen_reason), 1)
+                                    paste("Case reopened:", input$reopen_reason), uid)
       if (success) {
         # Clear resolved/closed timestamps
         tryCatch({
@@ -2201,6 +2597,7 @@ server <- function(input, output, session) {
           showNotification(paste("Reopened but failed to clear timestamps:", e$message), type = "warning")
         })
 
+        tryCatch({ log_activity(pool, uid, "Reopen Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#reopenCaseSection').hide();")
         runjs("$('#caseDetailsModal').modal('hide');")
         updateTextAreaInput(session, "reopen_reason", value = "")
@@ -2505,102 +2902,6 @@ server <- function(input, output, session) {
     }
   )
   
-  
-  
-  get_user_by_email <- function(con, email) {
-    DBI::dbGetQuery(con, "
-    SELECT user_id, full_name, email, role, region_id, is_active, password_hash
-    FROM users
-    WHERE LOWER(email) = LOWER(?)
-    LIMIT 1
-  ", params = list(email))
-  }
-  
-  is_allowlisted <- function(con, email) {
-    out <- DBI::dbGetQuery(con, "
-    SELECT email, is_active
-    FROM login_allowlist
-    WHERE LOWER(email) = LOWER(?)
-    LIMIT 1
-  ", params = list(email))
-    nrow(out) == 1 && isTRUE(out$is_active[1] == 1)
-  }
-  
-  can_see_all_regions <- function(role) {
-    role %in% c("National Admin", "National Resolver")
-  }
-  
-  rv <- reactiveValues(logged_in = FALSE, user = NULL)
-  
-  observeEvent(input$login_btn, {
-    req(input$login_email, input$login_password)
-    email <- trimws(tolower(input$login_email))
-    pwd <- input$login_password
-    
-    poolWithTransaction(pool, function(con) {
-      
-      if (!is_allowlisted(con, email)) {
-        try(DBI::dbExecute(con,
-                           "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-                           params = list(email, "Email not allowlisted or inactive")
-        ), silent = TRUE)
-        output$login_msg <- renderText("Access denied.")
-        return()
-      }
-      
-      u <- get_user_by_email(con, email)
-      if (nrow(u) == 0 || !isTRUE(u$is_active[1] == 1)) {
-        try(DBI::dbExecute(con,
-                           "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-                           params = list(email, "User missing or inactive")
-        ), silent = TRUE)
-        output$login_msg <- renderText("Account not available.")
-        return()
-      }
-      
-      ok <- FALSE
-      try({ ok <- bcrypt::checkpw(pwd, u$password_hash[1]) }, silent = TRUE)
-      
-      if (!isTRUE(ok)) {
-        try(DBI::dbExecute(con,
-                           "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 0, ?)",
-                           params = list(email, u$user_id[1], "Invalid password")
-        ), silent = TRUE)
-        output$login_msg <- renderText("Invalid credentials.")
-        return()
-      }
-      
-      try(DBI::dbExecute(con,
-                         "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'OK')",
-                         params = list(email, u$user_id[1])
-      ), silent = TRUE)
-      
-      rv$logged_in <- TRUE
-      rv$user <- u[1, ]
-      output$login_msg <- renderText("Signed in.")
-    })
-  })
-  
- ######################
-  
-  output$auth <- reactive({ isTRUE(rv$logged_in) })
-  outputOptions(output, "auth", suspendWhenHidden = FALSE)
-  
-  
-  
-  ###################
-  
- 
-  #poolWithTransaction(pool, function(con) {
-   # role <- rv$user$role
-    #region <- rv$user$region_id
-    
-    #if (can_see_all_regions(role)) {
-     # tickets <- fetch_tickets(con, region_id = NULL)
-    #} else {
-     # tickets <- fetch_tickets(con, region_id = region)
-    #}
-  #})
   
   
 }

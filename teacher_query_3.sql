@@ -217,6 +217,57 @@ INSERT IGNORE INTO login_allowlist (email) VALUES
 ('admin@ges.gov.gh');
 
 -- =====================================================
+-- GES Regional & National Staff Accounts
+-- =====================================================
+-- Default password for all accounts: 'password' (bcrypt hash below)
+-- Users MUST change their password after first login in production
+
+-- Regional Coordinator accounts (one per region)
+INSERT IGNORE INTO users (full_name, email, role, region_id, password_hash) VALUES
+('Ahafo Regional Coordinator', 'enquiry.ahaforegion@gmail.com', 'Regional Supervisor', 12, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Ashanti Regional Coordinator', 'enquiry.ashantiregion@gmail.com', 'Regional Supervisor', 2, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Bono Regional Coordinator', 'enquiry.bonoregion@gmail.com', 'Regional Supervisor', 10, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Bono East Regional Coordinator', 'enquiry.bonoeastregion@gmail.com', 'Regional Supervisor', 13, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Central Regional Coordinator', 'enquiry.centralregion@gmail.com', 'Regional Supervisor', 5, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Eastern Regional Coordinator', 'enquiry.easternregion@gmail.com', 'Regional Supervisor', 4, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Greater Accra Regional Coordinator', 'enquiry.greateraccraregion@gmail.com', 'Regional Supervisor', 1, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Northern Regional Coordinator', 'enquiry.northernregion@gmail.com', 'Regional Supervisor', 6, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('North East Regional Coordinator', 'enquiry.northeastregion@gmail.com', 'Regional Supervisor', 15, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Oti Regional Coordinator', 'enquiry.otiregion@gmail.com', 'Regional Supervisor', 14, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Savannah Regional Coordinator', 'enquiry.savannahregion@gmail.com', 'Regional Supervisor', 16, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Upper East Regional Coordinator', 'enquiry.ueastregion@gmail.com', 'Regional Supervisor', 7, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Upper West Regional Coordinator', 'enquiry.uwestregion@gmail.com', 'Regional Supervisor', 8, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Volta Regional Coordinator', 'enquiry.voltaregion@gmail.com', 'Regional Supervisor', 9, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Western Regional Coordinator', 'enquiry.westernregion@gmail.com', 'Regional Supervisor', 3, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('Western North Regional Coordinator', 'enquiry.westernnorthregion@gmail.com', 'Regional Supervisor', 11, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu');
+
+-- National staff accounts (see all regions)
+INSERT IGNORE INTO users (full_name, email, role, region_id, password_hash) VALUES
+('System Administrator', 'enquiry.admin@gmail.com', 'National Admin', NULL, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu'),
+('National PRO Office', 'enquiry.nationalprooffice@gmail.com', 'National Resolver', NULL, '$2b$12$yuuFF7bEx4vLEWrLjfX/q.OAFm1Q55fcNvsv6sVT43GjrVC/Jtdqu');
+
+-- Add all GES staff emails to allowlist
+INSERT IGNORE INTO login_allowlist (email, is_active, notes) VALUES
+('enquiry.ahaforegion@gmail.com', TRUE, 'Ahafo Regional Coordinator'),
+('enquiry.ashantiregion@gmail.com', TRUE, 'Ashanti Regional Coordinator'),
+('enquiry.bonoregion@gmail.com', TRUE, 'Bono Regional Coordinator'),
+('enquiry.bonoeastregion@gmail.com', TRUE, 'Bono East Regional Coordinator'),
+('enquiry.centralregion@gmail.com', TRUE, 'Central Regional Coordinator'),
+('enquiry.easternregion@gmail.com', TRUE, 'Eastern Regional Coordinator'),
+('enquiry.greateraccraregion@gmail.com', TRUE, 'Greater Accra Regional Coordinator'),
+('enquiry.northernregion@gmail.com', TRUE, 'Northern Regional Coordinator'),
+('enquiry.northeastregion@gmail.com', TRUE, 'North East Regional Coordinator'),
+('enquiry.otiregion@gmail.com', TRUE, 'Oti Regional Coordinator'),
+('enquiry.savannahregion@gmail.com', TRUE, 'Savannah Regional Coordinator'),
+('enquiry.ueastregion@gmail.com', TRUE, 'Upper East Regional Coordinator'),
+('enquiry.uwestregion@gmail.com', TRUE, 'Upper West Regional Coordinator'),
+('enquiry.voltaregion@gmail.com', TRUE, 'Volta Regional Coordinator'),
+('enquiry.westernregion@gmail.com', TRUE, 'Western Regional Coordinator'),
+('enquiry.westernnorthregion@gmail.com', TRUE, 'Western North Regional Coordinator'),
+('enquiry.admin@gmail.com', TRUE, 'System Administrator - National Admin'),
+('enquiry.nationalprooffice@gmail.com', TRUE, 'National PRO Office - sees all escalated cases');
+
+-- =====================================================
 -- Indexes for Performance
 -- =====================================================
 
