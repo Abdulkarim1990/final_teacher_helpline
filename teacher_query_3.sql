@@ -183,6 +183,40 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 
 -- =====================================================
+-- Authentication & Access Control Tables
+-- =====================================================
+
+-- Login allowlist for controlling who can access the system
+CREATE TABLE IF NOT EXISTS login_allowlist (
+  allowlist_id INT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(200) NOT NULL UNIQUE,
+  is_active BOOLEAN DEFAULT TRUE,
+  added_by VARCHAR(200) NULL,
+  added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT NULL
+);
+
+-- Login audit trail for security monitoring
+CREATE TABLE IF NOT EXISTS login_audit (
+  audit_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  email VARCHAR(200) NOT NULL,
+  user_id INT NULL,
+  success BOOLEAN NOT NULL DEFAULT FALSE,
+  reason VARCHAR(200) NULL,
+  ip_address VARCHAR(45) NULL,
+  user_agent TEXT NULL,
+  attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+-- Populate allowlist with existing users
+INSERT IGNORE INTO login_allowlist (email) VALUES
+('john.doe@ges.gov.gh'),
+('jane.smith@ges.gov.gh'),
+('robert.johnson@ges.gov.gh'),
+('admin@ges.gov.gh');
+
+-- =====================================================
 -- Indexes for Performance
 -- =====================================================
 
@@ -202,6 +236,11 @@ CREATE INDEX idx_actions_type_date ON ticket_actions(action_type, action_at);
 
 CREATE INDEX idx_escalations_ticket ON escalations(ticket_id);
 CREATE INDEX idx_escalations_to_user_status ON escalations(escalated_to_user_id, escalation_status);
+
+CREATE INDEX idx_login_audit_email ON login_audit(email, attempted_at);
+CREATE INDEX idx_login_audit_user ON login_audit(user_id, attempted_at);
+CREATE INDEX idx_login_allowlist_email ON login_allowlist(email);
+CREATE INDEX idx_tickets_satisfaction ON tickets(satisfaction_rating, status);
 
 -- =====================================================
 -- Initial Data Population - Based on Concept Note

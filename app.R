@@ -16,7 +16,6 @@ library(shinyWidgets)
 library(shinyjs)
 library(pool)
 library(openxlsx)
-library(dplyr)
 
 # install.packages("bcrypt")  # run once
 library(bcrypt)
@@ -611,13 +610,14 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
   })
 }
 
-# Fetch tickets function (from original code)
-fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, limit = 100) {
+# Fetch tickets function with enhanced filtering (search, date range, category)
+fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_id = NULL,
+                          search_text = NULL, date_from = NULL, date_to = NULL, limit = 200) {
   if (is.null(con)) return(data.frame())
-  
+
   tryCatch({
     base_query <- "
-      SELECT t.ticket_id, t.case_code, t.created_at, t.status, t.priority, 
+      SELECT t.ticket_id, t.case_code, t.created_at, t.status, t.priority,
              c.category_name, s.subcategory_name, t.teacher_name, t.teacher_phone, t.teacher_staff_id,
              t.school_name, t.district, t.summary, t.description,
              t.first_response_at, t.resolved_at, t.closed_at,
@@ -627,29 +627,46 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, limit = 1
       LEFT JOIN issue_subcategories s ON s.subcategory_id = t.subcategory_id
       WHERE 1=1
     "
-    
+
     params <- list()
-    
+
     if (!is.null(region_id) && region_id != 0) {
       base_query <- paste(base_query, "AND t.region_id = ?")
       params <- append(params, region_id)
     }
-    
+
     if (!is.null(status_filter) && status_filter != "All") {
       base_query <- paste(base_query, "AND t.status = ?")
       params <- append(params, status_filter)
     }
-    
-    base_query <- paste(base_query, "ORDER BY t.created_at DESC LIMIT", limit)
-    
-    if (length(params) > 0) {
-      result <- dbGetQuery(con, base_query, params = params)
-    } else {
-      result <- dbGetQuery(con, base_query)
+
+    if (!is.null(category_id) && category_id != 0) {
+      base_query <- paste(base_query, "AND t.category_id = ?")
+      params <- append(params, as.integer(category_id))
     }
-    
+
+    if (!is.null(search_text) && nchar(trimws(search_text)) >= 2) {
+      search_pattern <- paste0("%", trimws(search_text), "%")
+      base_query <- paste(base_query, "AND (t.teacher_name LIKE ? OR t.teacher_phone LIKE ? OR t.teacher_staff_id LIKE ? OR t.case_code LIKE ? OR t.school_name LIKE ?)")
+      params <- append(params, list(search_pattern, search_pattern, search_pattern, search_pattern, search_pattern))
+    }
+
+    if (!is.null(date_from) && !is.na(date_from)) {
+      base_query <- paste(base_query, "AND DATE(t.created_at) >= ?")
+      params <- append(params, as.character(date_from))
+    }
+
+    if (!is.null(date_to) && !is.na(date_to)) {
+      base_query <- paste(base_query, "AND DATE(t.created_at) <= ?")
+      params <- append(params, as.character(date_to))
+    }
+
+    base_query <- paste(base_query, "ORDER BY t.created_at DESC LIMIT ?")
+    params <- append(params, as.integer(limit))
+
+    result <- dbGetQuery(con, base_query, params = params)
     return(result)
-    
+
   }, error = function(e) {
     showNotification(paste("Error fetching tickets:", e$message), type = "error")
     return(data.frame())
@@ -666,22 +683,33 @@ get_dashboard_stats <- function(con, region_id = NULL) {
   ))
   
   tryCatch({
-    # 1. Single optimized query to DigitalOcean
-    where_clause <- if (!is.null(region_id) && region_id != 0) paste("WHERE t.region_id =", region_id) else ""
-    
-    main_query <- paste("
-      SELECT 
-        t.status, 
-        t.priority, 
-        COALESCE(c.category_name, 'Unknown') as category_name,
-        t.created_at, 
-        t.resolved_at
-      FROM tickets t
-      LEFT JOIN issue_categories c ON t.category_id = c.category_id", 
-                        where_clause
-    )
-    
-    raw_data <- dbGetQuery(con, main_query)
+    # 1. Single optimized query to DigitalOcean (parameterized)
+    if (!is.null(region_id) && region_id != 0) {
+      main_query <- "
+        SELECT
+          t.status,
+          t.priority,
+          COALESCE(c.category_name, 'Unknown') as category_name,
+          t.created_at,
+          t.resolved_at
+        FROM tickets t
+        LEFT JOIN issue_categories c ON t.category_id = c.category_id
+        WHERE t.region_id = ?
+      "
+      raw_data <- dbGetQuery(con, main_query, params = list(region_id))
+    } else {
+      main_query <- "
+        SELECT
+          t.status,
+          t.priority,
+          COALESCE(c.category_name, 'Unknown') as category_name,
+          t.created_at,
+          t.resolved_at
+        FROM tickets t
+        LEFT JOIN issue_categories c ON t.category_id = c.category_id
+      "
+      raw_data <- dbGetQuery(con, main_query)
+    }
     
     if (nrow(raw_data) == 0) {
       return(list(
@@ -752,11 +780,19 @@ ui <- dashboardPage(
   dashboardSidebar(
     sidebarMenu(
       id = "sidebar_menu",
-      
+
       menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt")),
       menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
       menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
       menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
+    ),
+
+    # Quick Case Lookup in sidebar
+    hr(),
+    div(style = "padding: 10px 15px;",
+        h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
+        textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
+        actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
     )
   ),
   
@@ -940,31 +976,45 @@ ui <- dashboardPage(
           tabPanel(
             title = "Case Summary",
             br(),
+            # Row 1: Primary KPIs
             fluidRow(
               infoBoxOutput("total_cases"),
               infoBoxOutput("new_cases"),
               infoBoxOutput("in_progress_cases"),
               infoBoxOutput("escalated_cases")
             ),
-            
+            # Row 2: Secondary KPIs
+            fluidRow(
+              infoBoxOutput("waiting_cases"),
+              infoBoxOutput("resolved_cases"),
+              infoBoxOutput("closed_cases"),
+              infoBoxOutput("overdue_cases_kpi")
+            ),
+
             fluidRow(
               box(
                 title = "Performance Metrics", status = "primary", solidHeader = TRUE,
                 width = 6, height = 300,
                 tableOutput("performance_metrics")
               ),
-              
+
               box(
                 title = "Cases by Priority", status = "primary", solidHeader = TRUE,
                 width = 6, height = 300,
                 withSpinner(plotlyOutput("priority_chart", height = "250px"))
               )
             ),
-            
+
             fluidRow(
               box(
                 title = "Recent Cases", status = "info", solidHeader = TRUE,
                 width = 12,
+                fluidRow(
+                  column(12, style = "text-align: right; margin-bottom: 10px;",
+                         tags$small(textOutput("auto_refresh_status", inline = TRUE), style = "color: #6b7280;"),
+                         actionButton("manual_refresh_dashboard", "Refresh Now", class = "btn-xs btn-info", style = "margin-left: 10px;")
+                  )
+                ),
                 withSpinner(DT::dataTableOutput("recent_cases_table"))
               )
             )
@@ -982,7 +1032,7 @@ ui <- dashboardPage(
                 fluidRow(
                   column(4,
                          selectInput("my_status_filter", "Status Filter",
-                                     choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved"))
+                                     choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
                   ),
                   column(4,
                          uiOutput("my_region_filter_ui")
@@ -1071,31 +1121,56 @@ ui <- dashboardPage(
         )
       ),
       
-      # All Cases Tab  
+      # All Cases Tab
       tabItem(
         tabName = "all_cases",
         fluidRow(
           box(
             title = "All Cases", status = "primary", solidHeader = TRUE,
             width = 12,
-            
+
+            # Row 1: Search and status/region/category filters
             fluidRow(
-              column(3,
-                     selectInput("all_status_filter", "Status Filter",
+              column(4,
+                     textInput("all_search_text", "Search (Name, Phone, Staff ID, Case Code, School)",
+                               placeholder = "Type to search...")
+              ),
+              column(2,
+                     selectInput("all_status_filter", "Status",
                                  choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
               ),
-              column(3,
+              column(2,
                      uiOutput("all_region_filter_ui")
               ),
-              column(3,
+              column(2,
                      uiOutput("all_category_filter_ui")
               ),
-              column(3,
+              column(2,
                      actionButton("refresh_all_cases", "Refresh", class = "btn-info",
-                                  style = "margin-top: 25px;")
+                                  style = "margin-top: 25px; width: 100%;")
               )
             ),
-            
+
+            # Row 2: Date range filters
+            fluidRow(
+              column(3,
+                     dateInput("all_date_from", "From Date", value = NULL, format = "yyyy-mm-dd")
+              ),
+              column(3,
+                     dateInput("all_date_to", "To Date", value = NULL, format = "yyyy-mm-dd")
+              ),
+              column(3,
+                     actionButton("clear_all_filters", "Clear All Filters", class = "btn-default",
+                                  style = "margin-top: 25px;")
+              ),
+              column(3,
+                     div(style = "margin-top: 25px; text-align: right;",
+                         downloadButton("export_cases_csv", "Export CSV", class = "btn-sm btn-success")
+                     )
+              )
+            ),
+
+            hr(),
             withSpinner(DT::dataTableOutput("all_cases_table"))
           )
         )
@@ -1338,8 +1413,14 @@ server <- function(input, output, session) {
                 choices = c("All Categories" = 0, setNames(cats$category_id, cats$category_name)))
   })
   
-  # Dashboard KPIs (existing code)
+  # Auto-refresh: invalidate dashboard data every 5 minutes
+  auto_refresh_timer <- reactiveTimer(300000)  # 300,000 ms = 5 minutes
+  dashboard_stats_invalidator <- reactiveVal(0)
+
+  # Dashboard KPIs (auto-refreshing)
   dashboard_stats <- reactive({
+    auto_refresh_timer()
+    dashboard_stats_invalidator()
     get_dashboard_stats(con())
   })
   
@@ -1382,7 +1463,7 @@ server <- function(input, output, session) {
   output$escalated_cases <- renderInfoBox({
     stats <- dashboard_stats()
     escalated_count <- sum(stats$status$count[stats$status$status == "Escalated"], na.rm = TRUE)
-    
+
     infoBox(
       title = "Escalated",
       value = escalated_count,
@@ -1390,7 +1471,64 @@ server <- function(input, output, session) {
       color = "red"
     )
   })
-  
+
+  output$waiting_cases <- renderInfoBox({
+    stats <- dashboard_stats()
+    waiting_count <- sum(stats$status$count[stats$status$status == "Waiting on Teacher"], na.rm = TRUE)
+    infoBox(
+      title = "Waiting on Teacher",
+      value = waiting_count,
+      icon = icon("hourglass-half"),
+      color = "purple"
+    )
+  })
+
+  output$resolved_cases <- renderInfoBox({
+    stats <- dashboard_stats()
+    resolved_count <- sum(stats$status$count[stats$status$status == "Resolved"], na.rm = TRUE)
+    infoBox(
+      title = "Resolved",
+      value = resolved_count,
+      icon = icon("check-circle"),
+      color = "green"
+    )
+  })
+
+  output$closed_cases <- renderInfoBox({
+    stats <- dashboard_stats()
+    closed_count <- sum(stats$status$count[stats$status$status == "Closed"], na.rm = TRUE)
+    infoBox(
+      title = "Closed",
+      value = closed_count,
+      icon = icon("archive"),
+      color = "black"
+    )
+  })
+
+  output$overdue_cases_kpi <- renderInfoBox({
+    sla <- tryCatch({
+      get_sla_overview(con())
+    }, error = function(e) {
+      list(summary = data.frame(overdue = 0))
+    })
+    overdue_count <- if (nrow(sla$summary) > 0) sla$summary$overdue[1] else 0
+    infoBox(
+      title = "SLA Overdue",
+      value = overdue_count,
+      icon = icon("exclamation-circle"),
+      color = "maroon"
+    )
+  })
+
+  output$auto_refresh_status <- renderText({
+    auto_refresh_timer()
+    paste("Auto-refreshes every 5 min | Last:", format(Sys.time(), "%H:%M:%S"))
+  })
+
+  observeEvent(input$manual_refresh_dashboard, {
+    dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
+  })
+
   # Performance metrics table (existing)
   output$performance_metrics <- renderTable({
     stats <- dashboard_stats()
@@ -1503,8 +1641,49 @@ server <- function(input, output, session) {
     } else {
       input$all_status_filter
     }
-    fetch_tickets(con(), region_id = input$all_region_filter, status_filter = status_val)
+    cat_val <- if(is.null(input$all_category_filter) || input$all_category_filter == "0") {
+      NULL
+    } else {
+      input$all_category_filter
+    }
+    search_val <- if(is.null(input$all_search_text) || input$all_search_text == "") {
+      NULL
+    } else {
+      input$all_search_text
+    }
+    date_from_val <- if(is.null(input$all_date_from) || is.na(input$all_date_from)) NULL else input$all_date_from
+    date_to_val <- if(is.null(input$all_date_to) || is.na(input$all_date_to)) NULL else input$all_date_to
+
+    fetch_tickets(con(), region_id = input$all_region_filter, status_filter = status_val,
+                  category_id = cat_val, search_text = search_val,
+                  date_from = date_from_val, date_to = date_to_val)
   })
+
+  # Clear All Filters handler
+  observeEvent(input$clear_all_filters, {
+    updateTextInput(session, "all_search_text", value = "")
+    updateSelectInput(session, "all_status_filter", selected = "All")
+    updateSelectInput(session, "all_region_filter", selected = "0")
+    updateSelectInput(session, "all_category_filter", selected = "0")
+    updateDateInput(session, "all_date_from", value = NA)
+    updateDateInput(session, "all_date_to", value = NA)
+  })
+
+  # CSV Export for All Cases
+  output$export_cases_csv <- downloadHandler(
+    filename = function() paste0("cases_export_", Sys.Date(), ".csv"),
+    content = function(file) {
+      data <- all_cases_data()
+      if (nrow(data) > 0) {
+        export_data <- data %>%
+          select(case_code, created_at, teacher_name, teacher_phone, teacher_staff_id,
+                 school_name, district, category_name, priority, status, summary, hours_open)
+        write.csv(export_data, file, row.names = FALSE)
+      } else {
+        write.csv(data.frame(Message = "No data to export"), file, row.names = FALSE)
+      }
+    }
+  )
   
   # ENHANCED: Render data tables with clickable case codes
   output$recent_cases_table <- DT::renderDataTable({
@@ -1586,10 +1765,34 @@ server <- function(input, output, session) {
     )
   })
   
-  # NEW: Case Details Modal Logic with debugging
+  # Quick Case Lookup from sidebar
+  observeEvent(input$quick_search_btn, {
+    req(input$quick_search_code)
+    search_code <- trimws(input$quick_search_code)
+    if (nchar(search_code) < 3) {
+      showNotification("Please enter at least 3 characters of the case code", type = "warning")
+      return()
+    }
+
+    tryCatch({
+      result <- dbGetQuery(con(), "SELECT ticket_id FROM tickets WHERE case_code LIKE ? LIMIT 1",
+                           params = list(paste0("%", search_code, "%")))
+      if (nrow(result) > 0) {
+        selected_case_id(result$ticket_id[1])
+        runjs("$('#caseDetailsModal').modal('show');")
+        updateTextInput(session, "quick_search_code", value = "")
+      } else {
+        showNotification("No case found matching that code", type = "warning")
+      }
+    }, error = function(e) {
+      showNotification(paste("Search error:", e$message), type = "error")
+    })
+  })
+
+  # Case Details Modal Logic
   observeEvent(input$view_case_id, {
     if (!is.null(input$view_case_id)) {
-      cat("Opening case details for ticket_id:", input$view_case_id, "\n")  # Debug output
+      cat("Opening case details for ticket_id:", input$view_case_id, "\n")
       selected_case_id(input$view_case_id)
       runjs("$('#caseDetailsModal').modal('show');")
     }
@@ -1733,6 +1936,12 @@ server <- function(input, output, session) {
                    actionButton("escalate_case_btn", "Escalate", class = "btn btn-warning", style = "margin: 5px;"),
                    if (!is.null(case_data$status) && case_data$status == "New") {
                      actionButton("start_progress_btn", "Start Working", class = "btn btn-success", style = "margin: 5px;")
+                   },
+                   if (!is.null(case_data$status) && case_data$status %in% c("Resolved", "Closed")) {
+                     actionButton("reopen_case_btn", "Reopen Case", class = "btn btn-danger", style = "margin: 5px;")
+                   },
+                   if (!is.null(case_data$status) && case_data$status %in% c("In Progress", "Waiting on Teacher", "Escalated")) {
+                     actionButton("resolve_with_rating_btn", "Resolve Case", class = "btn btn-success", style = "margin: 5px;")
                    }
                )
         )
@@ -1798,6 +2007,40 @@ server <- function(input, output, session) {
           div(style = "text-align: center;",
               actionButton("confirm_add_note", "Add Note", class = "btn btn-info"),
               actionButton("cancel_add_note", "Cancel", class = "btn btn-default", style = "margin-left: 10px;")
+          )
+      ),
+
+      # Resolve with Satisfaction Rating Section
+      div(id = "resolveRatingSection", style = "display: none; margin-top: 20px; padding: 20px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;",
+          h4("Resolve Case with Satisfaction Rating", style = "color: #16a085; margin-bottom: 15px;"),
+          fluidRow(
+            column(6,
+                   textAreaInput("resolution_notes", "Resolution Notes *",
+                                 placeholder = "Describe how the case was resolved...", height = "100px")
+            ),
+            column(6,
+                   sliderInput("satisfaction_rating", "Teacher Satisfaction (1-5)",
+                               min = 1, max = 5, value = 3, step = 1, ticks = TRUE),
+                   tags$small("1 = Very Dissatisfied, 3 = Neutral, 5 = Very Satisfied", style = "color: #6b7280;"),
+                   br(), br(),
+                   textAreaInput("satisfaction_feedback", "Teacher Feedback (Optional)",
+                                 placeholder = "Any feedback from the teacher...", height = "60px")
+            )
+          ),
+          div(style = "text-align: center;",
+              actionButton("confirm_resolve_rating", "Resolve Case", class = "btn btn-success"),
+              actionButton("cancel_resolve_rating", "Cancel", class = "btn btn-default", style = "margin-left: 10px;")
+          )
+      ),
+
+      # Reopen Case Section
+      div(id = "reopenCaseSection", style = "display: none; margin-top: 20px; padding: 20px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;",
+          h4("Reopen Case", style = "color: #dc2626; margin-bottom: 15px;"),
+          textAreaInput("reopen_reason", "Reason for Reopening *",
+                        placeholder = "Why does this case need to be reopened?", height = "100px"),
+          div(style = "text-align: center;",
+              actionButton("confirm_reopen_case", "Reopen Case", class = "btn btn-danger"),
+              actionButton("cancel_reopen_case", "Cancel", class = "btn btn-default", style = "margin-left: 10px;")
           )
       )
     )
@@ -1890,6 +2133,89 @@ server <- function(input, output, session) {
     }
   })
   
+  # Resolve with satisfaction rating handlers
+  observeEvent(input$resolve_with_rating_btn, {
+    runjs("$('#resolveRatingSection').show();")
+  })
+
+  observeEvent(input$confirm_resolve_rating, {
+    if (is.null(input$resolution_notes) || nchar(trimws(input$resolution_notes)) < 5) {
+      showNotification("Resolution notes must be at least 5 characters", type = "warning")
+      return()
+    }
+    if (!is.null(selected_case_id())) {
+      # Update status to Resolved
+      success <- update_case_status(con(), selected_case_id(), "Resolved",
+                                    input$resolution_notes, 1)
+      if (success) {
+        # Save satisfaction rating
+        tryCatch({
+          dbExecute(con(),
+                    "UPDATE tickets SET satisfaction_rating = ?, satisfaction_feedback = ? WHERE ticket_id = ?",
+                    params = list(
+                      as.integer(input$satisfaction_rating),
+                      if (!is.null(input$satisfaction_feedback) && input$satisfaction_feedback != "") input$satisfaction_feedback else NULL,
+                      selected_case_id()
+                    ))
+        }, error = function(e) {
+          showNotification(paste("Resolved but failed to save rating:", e$message), type = "warning")
+        })
+
+        runjs("$('#resolveRatingSection').hide();")
+        runjs("$('#caseDetailsModal').modal('hide');")
+        updateTextAreaInput(session, "resolution_notes", value = "")
+        updateTextAreaInput(session, "satisfaction_feedback", value = "")
+        showNotification("Case resolved with satisfaction rating saved", type = "message")
+        shinyjs::click("refresh_my_cases")
+        shinyjs::click("refresh_all_cases")
+      }
+    }
+  })
+
+  observeEvent(input$cancel_resolve_rating, {
+    runjs("$('#resolveRatingSection').hide();")
+    updateTextAreaInput(session, "resolution_notes", value = "")
+    updateTextAreaInput(session, "satisfaction_feedback", value = "")
+  })
+
+  # Reopen case handlers
+  observeEvent(input$reopen_case_btn, {
+    runjs("$('#reopenCaseSection').show();")
+  })
+
+  observeEvent(input$confirm_reopen_case, {
+    if (is.null(input$reopen_reason) || nchar(trimws(input$reopen_reason)) < 5) {
+      showNotification("Reopen reason must be at least 5 characters", type = "warning")
+      return()
+    }
+    if (!is.null(selected_case_id())) {
+      success <- update_case_status(con(), selected_case_id(), "In Progress",
+                                    paste("Case reopened:", input$reopen_reason), 1)
+      if (success) {
+        # Clear resolved/closed timestamps
+        tryCatch({
+          dbExecute(con(),
+                    "UPDATE tickets SET resolved_at = NULL, closed_at = NULL, satisfaction_rating = NULL WHERE ticket_id = ?",
+                    params = list(selected_case_id()))
+        }, error = function(e) {
+          showNotification(paste("Reopened but failed to clear timestamps:", e$message), type = "warning")
+        })
+
+        runjs("$('#reopenCaseSection').hide();")
+        runjs("$('#caseDetailsModal').modal('hide');")
+        updateTextAreaInput(session, "reopen_reason", value = "")
+        showNotification("Case reopened successfully", type = "message")
+        shinyjs::click("refresh_my_cases")
+        shinyjs::click("refresh_all_cases")
+      }
+    }
+  })
+
+  observeEvent(input$cancel_reopen_case, {
+    runjs("$('#reopenCaseSection').hide();")
+    updateTextAreaInput(session, "reopen_reason", value = "")
+  })
+
   # Close case details modal
   observeEvent(input$closeCaseDetails, {
     runjs("$('#caseDetailsModal').modal('hide');")
@@ -1897,8 +2223,13 @@ server <- function(input, output, session) {
     # Clear any open sections
     runjs("$('#statusUpdateSection').hide();")
     runjs("$('#addNoteSection').hide();")
+    runjs("$('#resolveRatingSection').hide();")
+    runjs("$('#reopenCaseSection').hide();")
     updateTextAreaInput(session, "status_notes", value = "")
     updateTextAreaInput(session, "note_text", value = "")
+    updateTextAreaInput(session, "resolution_notes", value = "")
+    updateTextAreaInput(session, "satisfaction_feedback", value = "")
+    updateTextAreaInput(session, "reopen_reason", value = "")
   })
   
   # Charts (existing)
@@ -2175,9 +2506,6 @@ server <- function(input, output, session) {
   )
   
   
-  
-  library(DBI)
-  library(bcrypt)
   
   get_user_by_email <- function(con, email) {
     DBI::dbGetQuery(con, "
