@@ -48,11 +48,11 @@ mytheme <- create_theme(
 create_db_pool <- function() {
   tryCatch({
     # Get environment variables with defaults
-    db_host <- Sys.getenv("DB_HOST", "ges-teacher-helpline-db-do-user-32347352-0.m.db.ondigitalocean.com")
-    db_port <- as.integer(Sys.getenv("DB_PORT", "25060"))
-    db_name <- Sys.getenv("DB_NAME", "teacher_query_3")
-    db_user <- Sys.getenv("DB_USER", "helpline_app")
-    db_password <- Sys.getenv("DB_PASSWORD", "AVNS_fENXj1uazkxb62NxPIv")
+    db_host <- Sys.getenv("DB_HOST", "")
+    db_port <- as.integer(Sys.getenv("DB_PORT", ""))
+    db_name <- Sys.getenv("DB_NAME", "")
+    db_user <- Sys.getenv("DB_USER", " ")
+    db_password <- Sys.getenv("DB_PASSWORD", " ")
     
     # Check if required environment variables are set
     if (any(c(db_host, db_name, db_user, db_password) == "")) {
@@ -2278,4 +2278,5 @@ server <- function(input, output, session) {
 }
 
 # Run the application
+
 shinyApp(ui = ui, server = server)
