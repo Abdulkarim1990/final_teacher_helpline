@@ -16,9 +16,12 @@ library(shinyWidgets)
 library(shinyjs)
 library(pool)
 library(openxlsx)
+library(dplyr)
+
+# install.packages("bcrypt")  # run once
 library(bcrypt)
 
-#bcrypt::hashpw("Admin@123")
+
 
 
 
@@ -49,10 +52,10 @@ mytheme <- create_theme(
 # Enhanced database connection for Digital Ocean MySQL
 create_db_pool <- function() {
   tryCatch({
-    # Get environment variables (no hardcoded defaults for sensitive values)
+    # Get environment variables with defaults
     db_host <- Sys.getenv("DB_HOST", "")
-    db_port <- as.integer(Sys.getenv("DB_PORT", "25060"))
-    db_name <- Sys.getenv("DB_NAME", "teacher_query_7")
+    db_port <- as.integer(Sys.getenv("DB_PORT", ""))
+    db_name <- Sys.getenv("DB_NAME", "")
     db_user <- Sys.getenv("DB_USER", "")
     db_password <- Sys.getenv("DB_PASSWORD", "")
     
@@ -146,11 +149,11 @@ USE_LOCAL_DB <- TRUE   # switch to FALSE for DigitalOcean
 if (USE_LOCAL_DB) {
   pool <- dbPool(
     drv      = RMariaDB::MariaDB(),
-    dbname   = Sys.getenv("LOCAL_DB_NAME", "teacher_query_7"),
-    host     = Sys.getenv("LOCAL_DB_HOST", "127.0.0.1"),
-    port     = as.integer(Sys.getenv("LOCAL_DB_PORT", "3306")),
-    user     = Sys.getenv("LOCAL_DB_USER", "root"),
-    password = Sys.getenv("LOCAL_DB_PASSWORD", "")
+    dbname   = "teacher_query_7",
+    host     = "127.0.0.1",
+    port     = 3306,
+    user     = "root",
+    password = "Naayelah2021@"
   )
 } else {
   pool <- create_db_pool()
@@ -277,6 +280,116 @@ get_sla_overview <- function(con) {
     overdue  = dbGetQuery(con, overdue_q)
   )
 }
+
+
+
+
+
+
+# Database helper functions (existing ones)
+get_regional_performance <- function(con, months_back = 12) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT r.region_name,
+           COUNT(*) as total_cases,
+           SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as resolution_rate,
+           ROUND(AVG(CASE WHEN t.status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, t.closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           ROUND(SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as escalation_rate,
+           SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases
+    FROM tickets t
+    LEFT JOIN regions r ON t.region_id = r.region_id
+    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY r.region_name
+    ORDER BY resolution_rate DESC, total_cases DESC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_category_trends <- function(con, months_back = 12) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT DATE_FORMAT(t.created_at, '%Y-%m') as ym,
+           COALESCE(c.category_name,'Unknown') as category_name,
+           COUNT(*) as cases
+    FROM tickets t
+    LEFT JOIN issue_categories c ON t.category_id = c.category_id
+    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY ym, category_name
+    ORDER BY ym ASC, cases DESC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_time_series <- function(con, months_back = 18) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT DATE_FORMAT(created_at, '%Y-%m') as ym,
+           COUNT(*) as created,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END),1) as avg_resolution_hours
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY ym
+    ORDER BY ym ASC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_sla_overview <- function(con) {
+  if (is.null(con)) return(list(summary=data.frame(), by_region=data.frame(), overdue=data.frame()))
+  
+  summary_q <- "
+    SELECT
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND (resolution_due_at IS NULL OR resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
+    FROM tickets
+  "
+  
+  by_region_q <- "
+    SELECT r.region_name,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND (t.resolution_due_at IS NULL OR t.resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
+    FROM tickets t
+    LEFT JOIN regions r ON t.region_id = r.region_id
+    GROUP BY r.region_name
+    ORDER BY overdue DESC, due_soon DESC, open_cases DESC
+  "
+  
+  overdue_q <- "
+    SELECT ticket_id, case_code, priority, status, created_at, resolution_due_at,
+           TIMESTAMPDIFF(HOUR, resolution_due_at, NOW()) as hours_overdue
+    FROM tickets
+    WHERE status NOT IN ('Resolved','Closed')
+      AND resolution_due_at IS NOT NULL
+      AND resolution_due_at < NOW()
+    ORDER BY hours_overdue DESC
+    LIMIT 200
+  "
+  
+  list(
+    summary  = dbGetQuery(con, summary_q),
+    by_region = dbGetQuery(con, by_region_q),
+    overdue  = dbGetQuery(con, overdue_q)
+  )
+}
+
+
+
+
+
 ##########
 get_categories <- function(con) {
   if (is.null(con)) return(data.frame(category_id = integer(), category_name = character()))
@@ -583,41 +696,38 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
     showNotification("Database connection not available", type = "error")
     return(FALSE)
   }
-
+  
   tryCatch({
     current_year <- year(Sys.Date())
     timestamp_id <- as.integer(as.numeric(Sys.time()) %% 1000000)
     case_code <- sprintf("GES-%d-%06d", current_year, timestamp_id)
-
+    
     teacher_staff_id <- if (is.null(teacher_staff_id) || teacher_staff_id == "") "" else teacher_staff_id
     school_name <- if (is.null(school_name) || school_name == "") "" else school_name
     district <- if (is.null(district) || district == "") "" else district
     description <- if (is.null(description) || description == "") "" else description
-
-    result <- poolWithTransaction(con, function(conn) {
-      query <- "
-        INSERT INTO tickets (
-          case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
-          school_name, district, category_id, subcategory_id, priority, status, summary, description,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, NOW())
-      "
-
-      rows_affected <- dbExecute(conn, query, params = list(
+    
+    query <- "
+      INSERT INTO tickets (
         case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
-        school_name, district, category_id, subcategory_id, priority, summary, description
-      ))
-
-      if (rows_affected > 0) {
-        return(case_code)
-      } else {
-        stop("No rows affected")
-      }
-    })
-
-    showNotification(paste("Case", result, "created successfully!"), type = "message")
-    return(TRUE)
-
+        school_name, district, category_id, subcategory_id, priority, status, summary, description,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, NOW())
+    "
+    
+    rows_affected <- dbExecute(con, query, params = list(
+      case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
+      school_name, district, category_id, subcategory_id, priority, summary, description
+    ))
+    
+    if (rows_affected > 0) {
+      showNotification(paste("Case", case_code, "created successfully!"), type = "message")
+      return(TRUE)
+    } else {
+      showNotification("Failed to create case - no rows affected", type = "error")
+      return(FALSE)
+    }
+    
   }, error = function(e) {
     showNotification(paste("Error saving ticket:", e$message), type = "error")
     return(FALSE)
