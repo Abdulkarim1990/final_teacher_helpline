@@ -983,7 +983,7 @@ ui <- tagList(
     div(id = "main_app",
         dashboardPage(
           dashboardHeader(
-            title = "GES Teacher Support Helpline",
+            title = "GES Teacher Support",
             tags$li(class = "dropdown",
                     tags$style(HTML("
                     .main-header .navbar {background-color: #1e3a8a !important;}
@@ -1176,13 +1176,16 @@ ui <- tagList(
                 opacity: 0.8;
               }
 
-              /* Enhanced Sidebar Menu Styling */
+              /* Enhanced Sidebar Menu Styling - Larger and more visible */
               .sidebar-menu > li > a {
-                padding: 15px 20px !important;
-                font-size: 15px !important;
+                padding: 18px 20px !important;
+                font-size: 16px !important;
                 font-weight: 500 !important;
                 border-left: 4px solid transparent;
                 transition: all 0.2s ease;
+                line-height: 1.4 !important;
+                display: flex !important;
+                align-items: center !important;
               }
 
               .sidebar-menu > li > a:hover {
@@ -1199,22 +1202,39 @@ ui <- tagList(
               .sidebar-menu > li > a > .fa,
               .sidebar-menu > li > a > .fas,
               .sidebar-menu > li > a > .far {
-                font-size: 18px !important;
-                width: 28px !important;
-                margin-right: 12px !important;
+                font-size: 22px !important;
+                width: 35px !important;
+                margin-right: 15px !important;
+                text-align: center;
               }
 
               .sidebar-menu > li > a > span {
-                font-size: 15px !important;
+                font-size: 16px !important;
+                font-weight: 500 !important;
               }
 
-              /* Sidebar header styling */
+              /* Sidebar header styling - ensure menu items are below the header */
               .main-sidebar {
+                padding-top: 0;
+              }
+
+              /* Push sidebar content below the fixed header (50px height) */
+              .main-sidebar .sidebar {
                 padding-top: 10px;
               }
 
+              .left-side, .main-sidebar {
+                padding-top: 50px;
+              }
+
               .sidebar-menu {
-                padding: 10px 0;
+                padding: 15px 0;
+                margin-top: 10px;
+              }
+
+              /* Ensure sidebar menu items are visible and well-spaced */
+              .sidebar-menu > li {
+                margin-bottom: 5px;
               }
 
               /* Quick Case Lookup styling */
@@ -1252,9 +1272,31 @@ ui <- tagList(
 
               /* Logo area styling */
               .main-header .logo {
-                font-size: 16px !important;
+                font-size: 14px !important;
                 font-weight: 600 !important;
-                padding: 0 15px !important;
+                padding: 0 10px !important;
+                height: 50px !important;
+                line-height: 50px !important;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+              }
+
+              /* Sidebar logo/title when collapsed */
+              .sidebar-mini.sidebar-collapse .main-header .logo {
+                width: 50px !important;
+              }
+
+              /* Ensure header is fixed and above sidebar */
+              .main-header {
+                position: fixed;
+                width: 100%;
+                z-index: 1030;
+              }
+
+              /* Wrapper padding adjustment for fixed header */
+              .wrapper {
+                overflow: hidden;
               }
             "))
             ),
