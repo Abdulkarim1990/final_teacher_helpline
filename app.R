@@ -16,9 +16,18 @@ library(shinyWidgets)
 library(shinyjs)
 library(pool)
 library(openxlsx)
+library(dplyr)
 
 # install.packages("bcrypt")  # run once
 library(bcrypt)
+
+
+library(bcrypt)
+
+#bcrypt::hashpw("Admin@123")
+
+
+
 
 
 
@@ -47,11 +56,11 @@ mytheme <- create_theme(
 create_db_pool <- function() {
   tryCatch({
     # Get environment variables with defaults
-    db_host <- Sys.getenv("DB_HOST", "")
-    db_port <- as.integer(Sys.getenv("DB_PORT", ""))
-    db_name <- Sys.getenv("DB_NAME", "")
-    db_user <- Sys.getenv("DB_USER", " ")
-    db_password <- Sys.getenv("DB_PASSWORD", " ")
+    db_host <- Sys.getenv("DB_HOST", "ges-teacher-helpline-db-do-user-32347352-0.m.db.ondigitalocean.com")
+    db_port <- as.integer(Sys.getenv("DB_PORT", "25060"))
+    db_name <- Sys.getenv("DB_NAME", "teacher_query_3")
+    db_user <- Sys.getenv("DB_USER", "helpline_app")
+    db_password <- Sys.getenv("DB_PASSWORD", "AVNS_fENXj1uazkxb62NxPIv")
     
     # Check if required environment variables are set
     if (any(c(db_host, db_name, db_user, db_password) == "")) {
@@ -64,6 +73,7 @@ create_db_pool <- function() {
     cat("Database:", db_name, "\n")
     cat("User:", db_user, "\n")
     
+    # For Digital Ocean MySQL, try different SSL configurations
     # For Digital Ocean MySQL, try different SSL configurations
     ssl_configs <- list(
       # Configuration 1: Standard SSL with server certificate verification disabled
@@ -137,16 +147,25 @@ create_db_pool <- function() {
 }
 
 # Create the database pool
-pool <- create_db_pool()
+USE_LOCAL_DB <- TRUE   # switch to FALSE for DigitalOcean
 
-# Ensure pool is closed when app stops
+if (USE_LOCAL_DB) {
+  pool <- dbPool(
+    drv      = RMariaDB::MariaDB(),
+    dbname   = "teacher_query_7",
+    host     = "127.0.0.1",
+    port     = 3306,
+    user     = "root",
+    password = "Naayelah2021@"
+  )
+} else {
+  pool <- create_db_pool()
+}
+
 onStop(function() {
-  if (!is.null(pool)) {
-    poolClose(pool)
-  }
+  try(poolClose(pool), silent = TRUE)
 })
 
-# Enhanced connection helper with better error handling
 
 
 # Enhanced connection helper with better error handling
@@ -983,12 +1002,44 @@ ui <- tagList(
     div(id = "main_app",
         dashboardPage(
           dashboardHeader(
-            title = "GES Teacher Support",
+            title = "GES Teacher Support Helpline",
             tags$li(class = "dropdown",
                     tags$style(HTML("
                     .main-header .navbar {background-color: #1e3a8a !important;}
                     .main-header .logo {background-color: #0f172a !important;}
                     .content-wrapper {background-color: #f8fafc;}
+                    
+                    /* FINAL OVERRIDE: force readable sidebar menu size */
+.main-sidebar,
+.main-sidebar .sidebar {
+  font-size: 15px !important;
+}
+
+.skin-blue .sidebar-menu > li > a,
+.skin-black .sidebar-menu > li > a,
+.skin-purple .sidebar-menu > li > a,
+.skin-green .sidebar-menu > li > a,
+.skin-red .sidebar-menu > li > a,
+.skin-yellow .sidebar-menu > li > a,
+.sidebar-menu > li > a {
+  font-size: 15px !important;
+  line-height: 20px !important;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+.sidebar-menu > li > a > span {
+  font-size: 15px !important;
+}
+
+.sidebar-menu > li > a > i,
+.sidebar-menu > li > a > .fa,
+.sidebar-menu > li > a > .fas,
+.sidebar-menu > li > a > .far,
+.sidebar-menu > li > a > .glyphicon {
+  font-size: 18px !important;
+}
+
                   "))
             ),
             # User info and logout in header
@@ -1001,19 +1052,29 @@ ui <- tagList(
             sidebarMenu(
               id = "sidebar_menu",
               
-              # These menu items are conditionally shown via server-side rendering
-              uiOutput("sidebar_menu_items")
-            ),
-            
-            # Quick Case Lookup in sidebar (only visible when logged in)
-            uiOutput("sidebar_quick_search")
-          ),
+              uiOutput("sidebar_menu_items"),
+              
+              # Quick Case Lookup pinned to bottom
+              tags$li(class = "header quick-case-header", "QUICK CASE LOOKUP"),
+              
+              tags$li(
+                class = "quick-case-panel",
+                div(
+                  style = "padding: 10px;",
+                  uiOutput("sidebar_quick_search")
+                )
+              )
+            )
+          )
+          ,
           
           dashboardBody(
             use_theme(mytheme),
             
             # Enhanced CSS for modern styling and case details
             tags$head(
+              # Load Font Awesome
+              tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"),
               tags$style(HTML("
               .content-wrapper, .right-side {
                 background-color: #f8fafc;
@@ -1176,16 +1237,27 @@ ui <- tagList(
                 opacity: 0.8;
               }
 
-              /* Enhanced Sidebar Menu Styling - Larger and more visible */
+              
+
+              .sidebar-menu {
+                padding: 5px 0 !important;
+                margin-top: 0 !important;
+              }
+
+              .sidebar-menu > li {
+                margin: 0 !important;
+              }
+
               .sidebar-menu > li > a {
-                padding: 18px 20px !important;
-                font-size: 16px !important;
+                padding: 14px 15px 14px 15px !important;
+                font-size: 14px !important;
                 font-weight: 500 !important;
-                border-left: 4px solid transparent;
-                transition: all 0.2s ease;
-                line-height: 1.4 !important;
                 display: flex !important;
                 align-items: center !important;
+                border-left: 4px solid transparent;
+                transition: all 0.2s ease;
+                white-space: nowrap !important;
+                overflow: visible !important;
               }
 
               .sidebar-menu > li > a:hover {
@@ -1201,40 +1273,38 @@ ui <- tagList(
               .sidebar-menu > li > a > i,
               .sidebar-menu > li > a > .fa,
               .sidebar-menu > li > a > .fas,
-              .sidebar-menu > li > a > .far {
-                font-size: 22px !important;
-                width: 35px !important;
-                margin-right: 15px !important;
-                text-align: center;
+              .sidebar-menu > li > a > .far,
+              .sidebar-menu > li > a > .glyphicon {
+                font-size: 16px !important;
+                width: 24px !important;
+                min-width: 24px !important;
+                margin-right: 10px !important;
+                text-align: center !important;
+                display: inline-block !important;
               }
 
               .sidebar-menu > li > a > span {
-                font-size: 16px !important;
-                font-weight: 500 !important;
+                font-size: 14px !important;
+                display: inline-block !important;
               }
 
-              /* Sidebar header styling - ensure menu items are below the header */
-              .main-sidebar {
-                padding-top: 0;
-              }
-
-              /* Push sidebar content below the fixed header (50px height) */
-              .main-sidebar .sidebar {
-                padding-top: 10px;
+              /* Ensure sidebar content is visible */
+              .sidebar {
+                overflow: visible !important;
               }
 
               .left-side, .main-sidebar {
-                padding-top: 50px;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
               }
 
-              .sidebar-menu {
-                padding: 15px 0;
-                margin-top: 10px;
+              /* Fix sidebar scrollbar and content visibility */
+              .slimScrollDiv {
+                overflow: visible !important;
               }
 
-              /* Ensure sidebar menu items are visible and well-spaced */
-              .sidebar-menu > li {
-                margin-bottom: 5px;
+              .sidebar-form, .sidebar-menu > li.header {
+                overflow: visible !important;
               }
 
               /* Quick Case Lookup styling */
@@ -1264,6 +1334,15 @@ ui <- tagList(
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
               }
+              
+              .sidebar-menu .header {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  padding: 10px 15px;
+}
+
+
+
 
               .sidebar hr {
                 border-color: rgba(255, 255, 255, 0.2);
@@ -1272,32 +1351,30 @@ ui <- tagList(
 
               /* Logo area styling */
               .main-header .logo {
-                font-size: 14px !important;
+                font-size: 16px !important;
                 font-weight: 600 !important;
-                padding: 0 10px !important;
-                height: 50px !important;
-                line-height: 50px !important;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
+                padding: 0 15px !important;
               }
+              
+              .sidebar-menu > li > a {
+  padding: 14px 15px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 22px !important;
+}
 
-              /* Sidebar logo/title when collapsed */
-              .sidebar-mini.sidebar-collapse .main-header .logo {
-                width: 50px !important;
-              }
+.sidebar-menu > li > a > span {
+  font-size: 16px !important;
+}
 
-              /* Ensure header is fixed and above sidebar */
-              .main-header {
-                position: fixed;
-                width: 100%;
-                z-index: 1030;
-              }
+.sidebar-menu > li > a > i,
+.sidebar-menu > li > a > .fa,
+.sidebar-menu > li > a > .fas,
+.sidebar-menu > li > a > .far,
+.sidebar-menu > li > a > .glyphicon {
+  font-size: 18px !important;
+}
 
-              /* Wrapper padding adjustment for fixed header */
-              .wrapper {
-                overflow: hidden;
-              }
             "))
             ),
             
@@ -1702,7 +1779,7 @@ server <- function(input, output, session) {
   # --- Observe page state changes and show/hide overlays ---
   observeEvent(rv$page_state, {
     state <- rv$page_state
-
+    
     if (state == "landing") {
       shinyjs::show("landing_overlay")
       shinyjs::hide("login_overlay")
@@ -1875,32 +1952,36 @@ server <- function(input, output, session) {
     if (isTRUE(rv$logged_in)) {
       # Logged-in users see all menu items - Dashboard selected by default
       tagList(
-        menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt"), selected = TRUE),
-        menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
-        menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
-        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
+        menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard"), selected = TRUE),
+        menuItem("New Case", tabName = "new_case", icon = icon("plus")),
+        menuItem("All Cases", tabName = "all_cases", icon = icon("list-alt")),
+        menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"))
       )
     } else {
       # Non-logged-in users (analytics-only) see only analytics
       tagList(
-        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"), selected = TRUE)
+        menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"), selected = TRUE)
       )
     }
   })
   
   # --- Quick Case Lookup (only for logged-in users) ---
   output$sidebar_quick_search <- renderUI({
-    if (isTRUE(rv$logged_in)) {
-      tagList(
-        hr(),
-        div(style = "padding: 10px 15px;",
-            h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
-            textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
-            actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
-        )
+    tagList(
+      textInput(
+        "quick_case_code",
+        NULL,
+        placeholder = "Enter Case Code",
+        width = "100%"
+      ),
+      actionButton(
+        "quick_case_btn",
+        "Find Case",
+        class = "btn-primary btn-block"
       )
-    }
+    )
   })
+  
   
   # --- Helper: Get user's allowed region_id for filtering ---
   user_region_id <- reactive({
