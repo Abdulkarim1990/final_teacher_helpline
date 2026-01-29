@@ -1002,40 +1002,75 @@ ui <- tagList(
             title = "GES Teacher Support Helpline",
             tags$li(class = "dropdown",
                     tags$style(HTML("
-                    .main-header .navbar {background-color: #1e3a8a !important;}
-                    .main-header .logo {background-color: #0f172a !important;}
+                    /* Header and Logo Styling */
+                    .main-header .navbar {
+                      background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%) !important;
+                      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+                    }
+                    .main-header .logo {
+                      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+                      font-size: 18px !important;
+                      font-weight: 700 !important;
+                      letter-spacing: 0.5px;
+                      padding: 0 15px !important;
+                    }
                     .content-wrapper {background-color: #f8fafc;}
-                    
-                    /* FINAL OVERRIDE: force readable sidebar menu size */
-.main-sidebar,
-.main-sidebar .sidebar {
-  font-size: 15px !important;
-}
 
-.skin-blue .sidebar-menu > li > a,
-.skin-black .sidebar-menu > li > a,
-.skin-purple .sidebar-menu > li > a,
-.skin-green .sidebar-menu > li > a,
-.skin-red .sidebar-menu > li > a,
-.skin-yellow .sidebar-menu > li > a,
-.sidebar-menu > li > a {
-  font-size: 15px !important;
-  line-height: 20px !important;
-  padding-top: 12px !important;
-  padding-bottom: 12px !important;
-}
+                    /* Sidebar Base Styling */
+                    .main-sidebar {
+                      background: linear-gradient(180deg, #1e3a8a 0%, #0f172a 100%) !important;
+                      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+                    }
+                    .main-sidebar .sidebar {
+                      padding-top: 5px !important;
+                    }
 
-.sidebar-menu > li > a > span {
-  font-size: 15px !important;
-}
+                    /* Enhanced Menu Items - Final Override */
+                    .skin-blue .sidebar-menu > li > a,
+                    .skin-black .sidebar-menu > li > a,
+                    .skin-purple .sidebar-menu > li > a,
+                    .skin-green .sidebar-menu > li > a,
+                    .skin-red .sidebar-menu > li > a,
+                    .skin-yellow .sidebar-menu > li > a,
+                    .sidebar-menu > li > a {
+                      font-size: 16px !important;
+                      line-height: 24px !important;
+                      padding: 16px 18px !important;
+                      color: #ffffff !important;
+                      border-radius: 8px;
+                      margin: 4px 10px !important;
+                      background: rgba(255,255,255,0.08);
+                      border-left: 4px solid transparent;
+                      transition: all 0.3s ease;
+                    }
 
-.sidebar-menu > li > a > i,
-.sidebar-menu > li > a > .fa,
-.sidebar-menu > li > a > .fas,
-.sidebar-menu > li > a > .far,
-.sidebar-menu > li > a > .glyphicon {
-  font-size: 18px !important;
-}
+                    .sidebar-menu > li > a:hover {
+                      background: rgba(255,255,255,0.18) !important;
+                      border-left-color: #f59e0b !important;
+                      transform: translateX(3px);
+                    }
+
+                    .sidebar-menu > li.active > a {
+                      background: rgba(44, 90, 160, 0.6) !important;
+                      border-left-color: #f59e0b !important;
+                      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    }
+
+                    .sidebar-menu > li > a > span {
+                      font-size: 16px !important;
+                      font-weight: 500 !important;
+                    }
+
+                    .sidebar-menu > li > a > i,
+                    .sidebar-menu > li > a > .fa,
+                    .sidebar-menu > li > a > .fas,
+                    .sidebar-menu > li > a > .far,
+                    .sidebar-menu > li > a > .glyphicon {
+                      font-size: 20px !important;
+                      width: 28px !important;
+                      color: #f59e0b !important;
+                      margin-right: 12px !important;
+                    }
 
                   "))
             ),
@@ -1237,34 +1272,40 @@ ui <- tagList(
               
 
               .sidebar-menu {
-                padding: 5px 0 !important;
-                margin-top: 0 !important;
+                padding: 10px 0 !important;
+                margin-top: 10px !important;
               }
 
               .sidebar-menu > li {
-                margin: 0 !important;
+                margin: 4px 8px !important;
               }
 
               .sidebar-menu > li > a {
-                padding: 14px 15px 14px 15px !important;
-                font-size: 14px !important;
-                font-weight: 500 !important;
+                padding: 16px 20px 16px 18px !important;
+                font-size: 16px !important;
+                font-weight: 600 !important;
                 display: flex !important;
                 align-items: center !important;
-                border-left: 4px solid transparent;
-                transition: all 0.2s ease;
+                border-left: 5px solid transparent;
+                border-radius: 8px !important;
+                transition: all 0.3s ease;
                 white-space: nowrap !important;
                 overflow: visible !important;
+                background-color: rgba(255, 255, 255, 0.08) !important;
+                margin-bottom: 2px !important;
               }
 
               .sidebar-menu > li > a:hover {
-                background-color: #2c5aa0 !important;
-                border-left: 4px solid #f59e0b;
+                background-color: rgba(255, 255, 255, 0.2) !important;
+                border-left: 5px solid #f59e0b;
+                transform: translateX(3px);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
               }
 
               .sidebar-menu > li.active > a {
                 background-color: #2c5aa0 !important;
-                border-left: 4px solid #f59e0b;
+                border-left: 5px solid #f59e0b;
+                box-shadow: 0 2px 10px rgba(44, 90, 160, 0.4);
               }
 
               .sidebar-menu > li > a > i,
@@ -1272,17 +1313,19 @@ ui <- tagList(
               .sidebar-menu > li > a > .fas,
               .sidebar-menu > li > a > .far,
               .sidebar-menu > li > a > .glyphicon {
-                font-size: 16px !important;
-                width: 24px !important;
-                min-width: 24px !important;
-                margin-right: 10px !important;
+                font-size: 20px !important;
+                width: 30px !important;
+                min-width: 30px !important;
+                margin-right: 14px !important;
                 text-align: center !important;
                 display: inline-block !important;
+                color: #f59e0b !important;
               }
 
               .sidebar-menu > li > a > span {
-                font-size: 14px !important;
+                font-size: 16px !important;
                 display: inline-block !important;
+                letter-spacing: 0.3px !important;
               }
 
               /* Ensure sidebar content is visible */
@@ -1305,24 +1348,68 @@ ui <- tagList(
               }
 
               /* Quick Case Lookup styling */
+              .quick-case-header {
+                font-size: 13px !important;
+                font-weight: 700 !important;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                color: rgba(255, 255, 255, 0.7) !important;
+                padding: 20px 15px 10px 15px !important;
+                margin-top: 20px !important;
+                border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+              }
+
+              .quick-case-panel {
+                margin: 0 8px !important;
+                padding: 0 !important;
+              }
+
+              .quick-case-panel > div {
+                background: rgba(255, 255, 255, 0.08) !important;
+                border-radius: 10px !important;
+                padding: 18px !important;
+                margin-top: 5px !important;
+              }
+
               .sidebar .form-control {
-                background-color: rgba(255, 255, 255, 0.15) !important;
-                border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                background-color: rgba(255, 255, 255, 0.12) !important;
+                border: 2px solid rgba(255, 255, 255, 0.25) !important;
                 color: white !important;
-                padding: 10px 12px !important;
-                font-size: 14px !important;
-                border-radius: 6px !important;
+                padding: 14px 16px !important;
+                font-size: 15px !important;
+                border-radius: 8px !important;
+                transition: all 0.3s ease;
               }
 
               .sidebar .form-control::placeholder {
-                color: rgba(255, 255, 255, 0.6) !important;
+                color: rgba(255, 255, 255, 0.5) !important;
               }
 
               .sidebar .form-control:focus {
-                background-color: rgba(255, 255, 255, 0.25) !important;
+                background-color: rgba(255, 255, 255, 0.2) !important;
                 border-color: #f59e0b !important;
                 outline: none !important;
-                box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2) !important;
+                box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25) !important;
+              }
+
+              .sidebar .btn-primary {
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                border: none !important;
+                padding: 14px 20px !important;
+                font-size: 15px !important;
+                font-weight: 600 !important;
+                border-radius: 8px !important;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                transition: all 0.3s ease;
+                box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+                margin-top: 12px !important;
+              }
+
+              .sidebar .btn-primary:hover {
+                background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(245, 158, 11, 0.4);
               }
 
               .sidebar h5 {
