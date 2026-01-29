@@ -999,103 +999,32 @@ ui <- tagList(
     div(id = "main_app",
         dashboardPage(
           dashboardHeader(
-            title = "GES Teacher Support Helpline",
-            tags$li(class = "dropdown",
-                    tags$style(HTML("
-                    /* Header and Logo Styling */
-                    .main-header .navbar {
-                      background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%) !important;
-                      box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-                    }
-                    .main-header .logo {
-                      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
-                      font-size: 18px !important;
-                      font-weight: 700 !important;
-                      letter-spacing: 0.5px;
-                      padding: 0 15px !important;
-                    }
-                    .content-wrapper {background-color: #f8fafc;}
-
-                    /* Sidebar Base Styling */
-                    .main-sidebar {
-                      background: linear-gradient(180deg, #1e3a8a 0%, #0f172a 100%) !important;
-                      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
-                    }
-                    .main-sidebar .sidebar {
-                      padding-top: 5px !important;
-                    }
-
-                    /* Enhanced Menu Items - Final Override */
-                    .skin-blue .sidebar-menu > li > a,
-                    .skin-black .sidebar-menu > li > a,
-                    .skin-purple .sidebar-menu > li > a,
-                    .skin-green .sidebar-menu > li > a,
-                    .skin-red .sidebar-menu > li > a,
-                    .skin-yellow .sidebar-menu > li > a,
-                    .sidebar-menu > li > a {
-                      font-size: 16px !important;
-                      line-height: 24px !important;
-                      padding: 16px 18px !important;
-                      color: #ffffff !important;
-                      border-radius: 8px;
-                      margin: 4px 10px !important;
-                      background: rgba(255,255,255,0.08);
-                      border-left: 4px solid transparent;
-                      transition: all 0.3s ease;
-                    }
-
-                    .sidebar-menu > li > a:hover {
-                      background: rgba(255,255,255,0.18) !important;
-                      border-left-color: #f59e0b !important;
-                      transform: translateX(3px);
-                    }
-
-                    .sidebar-menu > li.active > a {
-                      background: rgba(44, 90, 160, 0.6) !important;
-                      border-left-color: #f59e0b !important;
-                      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                    }
-
-                    .sidebar-menu > li > a > span {
-                      font-size: 16px !important;
-                      font-weight: 500 !important;
-                    }
-
-                    .sidebar-menu > li > a > i,
-                    .sidebar-menu > li > a > .fa,
-                    .sidebar-menu > li > a > .fas,
-                    .sidebar-menu > li > a > .far,
-                    .sidebar-menu > li > a > .glyphicon {
-                      font-size: 20px !important;
-                      width: 28px !important;
-                      color: #f59e0b !important;
-                      margin-right: 12px !important;
-                    }
-
-                  "))
+            title = "GES Teacher Support",
+            titleWidth = 200,
+            # Horizontal Navigation Menu
+            tags$li(class = "dropdown nav-menu-container",
+                    uiOutput("header_nav_menu")
+            ),
+            # Quick Case Lookup in header
+            tags$li(class = "dropdown quick-lookup-header",
+                    uiOutput("header_quick_search")
             ),
             # User info and logout in header
-            tags$li(class = "dropdown",
+            tags$li(class = "dropdown user-menu-header",
                     uiOutput("user_info_header")
             )
           ),
-          
+
+          # Hidden sidebar with menu for tab switching
           dashboardSidebar(
+            collapsed = TRUE,
+            disable = FALSE,
             sidebarMenu(
               id = "sidebar_menu",
-              
-              uiOutput("sidebar_menu_items"),
-              
-              # Quick Case Lookup pinned to bottom
-              tags$li(class = "header quick-case-header", "QUICK CASE LOOKUP"),
-              
-              tags$li(
-                class = "quick-case-panel",
-                div(
-                  style = "padding: 10px;",
-                  uiOutput("sidebar_quick_search")
-                )
-              )
+              menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+              menuItem("New Case", tabName = "new_case", icon = icon("plus")),
+              menuItem("All Cases", tabName = "all_cases", icon = icon("list-alt")),
+              menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
             )
           )
           ,
@@ -1103,11 +1032,222 @@ ui <- tagList(
           dashboardBody(
             use_theme(mytheme),
             
+            # Hidden input for tab navigation
+            shinyjs::hidden(textInput("current_tab", "", value = "dashboard")),
+
             # Enhanced CSS for modern styling and case details
             tags$head(
               # Load Font Awesome
               tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"),
               tags$style(HTML("
+              /* ============================================ */
+              /* HORIZONTAL NAVIGATION STYLING */
+              /* ============================================ */
+
+              /* Header styling */
+              .main-header {
+                max-height: none !important;
+              }
+
+              .main-header .navbar {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%) !important;
+                margin-left: 200px !important;
+                min-height: 60px !important;
+              }
+
+              .main-header .logo {
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+                width: 200px !important;
+                font-size: 16px !important;
+                font-weight: 700 !important;
+                height: 60px !important;
+                line-height: 60px !important;
+                padding: 0 10px !important;
+              }
+
+              /* Hide sidebar and its toggle completely */
+              .sidebar-toggle {
+                display: none !important;
+              }
+
+              .main-sidebar {
+                display: none !important;
+                width: 0 !important;
+              }
+
+              .left-side, .main-sidebar {
+                width: 0 !important;
+                min-width: 0 !important;
+              }
+
+              /* Content wrapper - full width without sidebar */
+              .content-wrapper, .right-side, .main-footer {
+                margin-left: 0 !important;
+                background-color: #f8fafc;
+              }
+
+              body.sidebar-collapse .content-wrapper,
+              body.sidebar-collapse .right-side,
+              body.sidebar-collapse .main-footer {
+                margin-left: 0 !important;
+              }
+
+              /* Navigation menu container */
+              .nav-menu-container {
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+
+              .nav-menu-container > a {
+                display: none !important;
+              }
+
+              /* Horizontal navigation buttons */
+              .header-nav-menu {
+                display: flex !important;
+                align-items: center !important;
+                gap: 5px !important;
+                padding: 0 10px !important;
+              }
+
+              .nav-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                padding: 12px 20px !important;
+                font-size: 15px !important;
+                font-weight: 600 !important;
+                color: white !important;
+                background: rgba(255, 255, 255, 0.1) !important;
+                border: none !important;
+                border-radius: 8px !important;
+                cursor: pointer !important;
+                transition: all 0.3s ease !important;
+                text-decoration: none !important;
+                white-space: nowrap !important;
+                margin: 5px 3px !important;
+              }
+
+              .nav-btn:hover {
+                background: rgba(255, 255, 255, 0.25) !important;
+                transform: translateY(-2px) !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+              }
+
+              .nav-btn.active {
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4) !important;
+              }
+
+              .nav-btn i {
+                margin-right: 8px !important;
+                font-size: 16px !important;
+              }
+
+              /* Quick lookup in header */
+              .quick-lookup-header {
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 15px !important;
+              }
+
+              .quick-lookup-header > a {
+                display: none !important;
+              }
+
+              .header-quick-search {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                background: rgba(255, 255, 255, 0.1) !important;
+                padding: 6px 12px !important;
+                border-radius: 8px !important;
+              }
+
+              .header-quick-search input {
+                background: rgba(255, 255, 255, 0.15) !important;
+                border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                color: white !important;
+                padding: 8px 12px !important;
+                border-radius: 6px !important;
+                width: 160px !important;
+                font-size: 14px !important;
+              }
+
+              .header-quick-search input::placeholder {
+                color: rgba(255, 255, 255, 0.6) !important;
+              }
+
+              .header-quick-search input:focus {
+                outline: none !important;
+                border-color: #f59e0b !important;
+                background: rgba(255, 255, 255, 0.25) !important;
+              }
+
+              .header-quick-search .btn {
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                border: none !important;
+                color: white !important;
+                padding: 8px 16px !important;
+                border-radius: 6px !important;
+                font-weight: 600 !important;
+                font-size: 13px !important;
+                cursor: pointer !important;
+                transition: all 0.3s ease !important;
+              }
+
+              .header-quick-search .btn:hover {
+                background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+                transform: translateY(-1px) !important;
+              }
+
+              /* User menu styling */
+              .user-menu-header {
+                padding: 0 15px !important;
+              }
+
+              .user-menu-header .user-info-box {
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+              }
+
+              .user-menu-header .user-details {
+                text-align: right !important;
+                line-height: 1.3 !important;
+              }
+
+              .user-menu-header .user-name {
+                color: white !important;
+                font-weight: 600 !important;
+                font-size: 14px !important;
+              }
+
+              .user-menu-header .user-role {
+                color: rgba(255, 255, 255, 0.7) !important;
+                font-size: 12px !important;
+              }
+
+              .user-menu-header .btn-logout {
+                background: rgba(220, 38, 38, 0.8) !important;
+                border: none !important;
+                color: white !important;
+                padding: 8px 16px !important;
+                border-radius: 6px !important;
+                font-weight: 600 !important;
+                font-size: 13px !important;
+                transition: all 0.3s ease !important;
+              }
+
+              .user-menu-header .btn-logout:hover {
+                background: rgba(220, 38, 38, 1) !important;
+              }
+
+              /* ============================================ */
+              /* END HORIZONTAL NAVIGATION STYLING */
+              /* ============================================ */
+
               .content-wrapper, .right-side {
                 background-color: #f8fafc;
               }
@@ -1271,193 +1411,7 @@ ui <- tagList(
 
               
 
-              .sidebar-menu {
-                padding: 10px 0 !important;
-                margin-top: 10px !important;
-              }
-
-              .sidebar-menu > li {
-                margin: 4px 8px !important;
-              }
-
-              .sidebar-menu > li > a {
-                padding: 16px 20px 16px 18px !important;
-                font-size: 16px !important;
-                font-weight: 600 !important;
-                display: flex !important;
-                align-items: center !important;
-                border-left: 5px solid transparent;
-                border-radius: 8px !important;
-                transition: all 0.3s ease;
-                white-space: nowrap !important;
-                overflow: visible !important;
-                background-color: rgba(255, 255, 255, 0.08) !important;
-                margin-bottom: 2px !important;
-              }
-
-              .sidebar-menu > li > a:hover {
-                background-color: rgba(255, 255, 255, 0.2) !important;
-                border-left: 5px solid #f59e0b;
-                transform: translateX(3px);
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-              }
-
-              .sidebar-menu > li.active > a {
-                background-color: #2c5aa0 !important;
-                border-left: 5px solid #f59e0b;
-                box-shadow: 0 2px 10px rgba(44, 90, 160, 0.4);
-              }
-
-              .sidebar-menu > li > a > i,
-              .sidebar-menu > li > a > .fa,
-              .sidebar-menu > li > a > .fas,
-              .sidebar-menu > li > a > .far,
-              .sidebar-menu > li > a > .glyphicon {
-                font-size: 20px !important;
-                width: 30px !important;
-                min-width: 30px !important;
-                margin-right: 14px !important;
-                text-align: center !important;
-                display: inline-block !important;
-                color: #f59e0b !important;
-              }
-
-              .sidebar-menu > li > a > span {
-                font-size: 16px !important;
-                display: inline-block !important;
-                letter-spacing: 0.3px !important;
-              }
-
-              /* Ensure sidebar content is visible */
-              .sidebar {
-                overflow: visible !important;
-              }
-
-              .left-side, .main-sidebar {
-                overflow-y: auto !important;
-                overflow-x: hidden !important;
-              }
-
-              /* Fix sidebar scrollbar and content visibility */
-              .slimScrollDiv {
-                overflow: visible !important;
-              }
-
-              .sidebar-form, .sidebar-menu > li.header {
-                overflow: visible !important;
-              }
-
-              /* Quick Case Lookup styling */
-              .quick-case-header {
-                font-size: 13px !important;
-                font-weight: 700 !important;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                color: rgba(255, 255, 255, 0.7) !important;
-                padding: 20px 15px 10px 15px !important;
-                margin-top: 20px !important;
-                border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
-              }
-
-              .quick-case-panel {
-                margin: 0 8px !important;
-                padding: 0 !important;
-              }
-
-              .quick-case-panel > div {
-                background: rgba(255, 255, 255, 0.08) !important;
-                border-radius: 10px !important;
-                padding: 18px !important;
-                margin-top: 5px !important;
-              }
-
-              .sidebar .form-control {
-                background-color: rgba(255, 255, 255, 0.12) !important;
-                border: 2px solid rgba(255, 255, 255, 0.25) !important;
-                color: white !important;
-                padding: 14px 16px !important;
-                font-size: 15px !important;
-                border-radius: 8px !important;
-                transition: all 0.3s ease;
-              }
-
-              .sidebar .form-control::placeholder {
-                color: rgba(255, 255, 255, 0.5) !important;
-              }
-
-              .sidebar .form-control:focus {
-                background-color: rgba(255, 255, 255, 0.2) !important;
-                border-color: #f59e0b !important;
-                outline: none !important;
-                box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25) !important;
-              }
-
-              .sidebar .btn-primary {
-                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-                border: none !important;
-                padding: 14px 20px !important;
-                font-size: 15px !important;
-                font-weight: 600 !important;
-                border-radius: 8px !important;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                transition: all 0.3s ease;
-                box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
-                margin-top: 12px !important;
-              }
-
-              .sidebar .btn-primary:hover {
-                background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
-                transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(245, 158, 11, 0.4);
-              }
-
-              .sidebar h5 {
-                font-size: 14px !important;
-                font-weight: 600 !important;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-              }
-              
-              .sidebar-menu .header {
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  padding: 10px 15px;
-}
-
-
-
-
-              .sidebar hr {
-                border-color: rgba(255, 255, 255, 0.2);
-                margin: 15px 0;
-              }
-
-              /* Logo area styling */
-              .main-header .logo {
-                font-size: 16px !important;
-                font-weight: 600 !important;
-                padding: 0 15px !important;
-              }
-              
-              .sidebar-menu > li > a {
-  padding: 14px 15px !important;
-  font-size: 16px !important;
-  font-weight: 600 !important;
-  line-height: 22px !important;
-}
-
-.sidebar-menu > li > a > span {
-  font-size: 16px !important;
-}
-
-.sidebar-menu > li > a > i,
-.sidebar-menu > li > a > .fa,
-.sidebar-menu > li > a > .fas,
-.sidebar-menu > li > a > .far,
-.sidebar-menu > li > a > .glyphicon {
-  font-size: 18px !important;
-}
+              /* Old sidebar styles removed - sidebar is now hidden */
 
             "))
             ),
@@ -2030,11 +1984,82 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$header_login_btn, { rv$page_state <- "login" })
-  
-  # --- Dynamic Sidebar Menu ---
+
+  # --- Horizontal Navigation Menu in Header ---
+  output$header_nav_menu <- renderUI({
+    current <- input$current_tab
+    if (is.null(current)) current <- "dashboard"
+
+    if (isTRUE(rv$logged_in)) {
+      # Logged-in users see all menu items
+      div(class = "header-nav-menu",
+          actionButton("nav_dashboard",
+                       tagList(icon("dashboard"), "Dashboard"),
+                       class = paste("nav-btn", if(current == "dashboard") "active" else "")),
+          actionButton("nav_new_case",
+                       tagList(icon("plus"), "New Case"),
+                       class = paste("nav-btn", if(current == "new_case") "active" else "")),
+          actionButton("nav_all_cases",
+                       tagList(icon("list-alt"), "All Cases"),
+                       class = paste("nav-btn", if(current == "all_cases") "active" else "")),
+          actionButton("nav_analytics",
+                       tagList(icon("chart-bar"), "Analytics"),
+                       class = paste("nav-btn", if(current == "analytics") "active" else ""))
+      )
+    } else {
+      # Non-logged-in users see only analytics
+      div(class = "header-nav-menu",
+          actionButton("nav_analytics",
+                       tagList(icon("chart-bar"), "Analytics"),
+                       class = "nav-btn active")
+      )
+    }
+  })
+
+  # --- Navigation Button Observers ---
+  observeEvent(input$nav_dashboard, {
+    updateTextInput(session, "current_tab", value = "dashboard")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "dashboard")
+  })
+
+  observeEvent(input$nav_new_case, {
+    updateTextInput(session, "current_tab", value = "new_case")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "new_case")
+  })
+
+  observeEvent(input$nav_all_cases, {
+    updateTextInput(session, "current_tab", value = "all_cases")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "all_cases")
+  })
+
+  observeEvent(input$nav_analytics, {
+    updateTextInput(session, "current_tab", value = "analytics")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "analytics")
+  })
+
+  # Sync current_tab when sidebar_menu changes (for any external changes)
+  observeEvent(input$sidebar_menu, {
+    updateTextInput(session, "current_tab", value = input$sidebar_menu)
+  })
+
+  # --- Quick Case Lookup in Header ---
+  output$header_quick_search <- renderUI({
+    if (isTRUE(rv$logged_in)) {
+      div(class = "header-quick-search",
+          tags$input(
+            type = "text",
+            id = "quick_case_code",
+            placeholder = "Case Code",
+            class = "form-control"
+          ),
+          actionButton("quick_case_btn", "Find", class = "btn")
+      )
+    }
+  })
+
+  # --- Legacy Sidebar Menu (kept for compatibility) ---
   output$sidebar_menu_items <- renderUI({
     if (isTRUE(rv$logged_in)) {
-      # Logged-in users see all menu items - Dashboard selected by default
       tagList(
         menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard"), selected = TRUE),
         menuItem("New Case", tabName = "new_case", icon = icon("plus")),
@@ -2042,7 +2067,6 @@ server <- function(input, output, session) {
         menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"))
       )
     } else {
-      # Non-logged-in users (analytics-only) see only analytics
       tagList(
         menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"), selected = TRUE)
       )
