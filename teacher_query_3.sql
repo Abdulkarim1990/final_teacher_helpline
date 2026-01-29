@@ -434,7 +434,7 @@ INSERT IGNORE INTO users (full_name, email, role, region_id, password_hash) VALU
 ('John Doe', 'john.doe@ges.gov.gh', 'Regional Agent', 1, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
 ('Jane Smith', 'jane.smith@ges.gov.gh', 'Regional Supervisor', 1, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
 ('Robert Johnson', 'robert.johnson@ges.gov.gh', 'National Resolver', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
-('Mary Administrator', 'admin@ges.gov.gh', 'National Admin', NULL, 'game1990');
+('Mary Administrator', 'admin@ges.gov.gh', 'National Admin', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');
 
 -- =====================================================
 -- Triggers for Auto-Updates
