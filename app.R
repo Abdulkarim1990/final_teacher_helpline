@@ -1011,9 +1011,11 @@ ui <- tagList(
           
           dashboardBody(
             use_theme(mytheme),
-            
+
             # Enhanced CSS for modern styling and case details
             tags$head(
+              # Load Font Awesome
+              tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"),
               tags$style(HTML("
               .content-wrapper, .right-side {
                 background-color: #f8fafc;
@@ -1177,12 +1179,29 @@ ui <- tagList(
               }
 
               /* Enhanced Sidebar Menu Styling */
+              .main-sidebar {
+                padding-top: 0 !important;
+              }
+
+              .sidebar-menu {
+                padding: 5px 0 !important;
+                margin-top: 0 !important;
+              }
+
+              .sidebar-menu > li {
+                margin: 0 !important;
+              }
+
               .sidebar-menu > li > a {
-                padding: 15px 20px !important;
-                font-size: 15px !important;
+                padding: 14px 15px 14px 15px !important;
+                font-size: 14px !important;
                 font-weight: 500 !important;
+                display: flex !important;
+                align-items: center !important;
                 border-left: 4px solid transparent;
                 transition: all 0.2s ease;
+                white-space: nowrap !important;
+                overflow: visible !important;
               }
 
               .sidebar-menu > li > a:hover {
@@ -1198,23 +1217,38 @@ ui <- tagList(
               .sidebar-menu > li > a > i,
               .sidebar-menu > li > a > .fa,
               .sidebar-menu > li > a > .fas,
-              .sidebar-menu > li > a > .far {
-                font-size: 18px !important;
-                width: 28px !important;
-                margin-right: 12px !important;
+              .sidebar-menu > li > a > .far,
+              .sidebar-menu > li > a > .glyphicon {
+                font-size: 16px !important;
+                width: 24px !important;
+                min-width: 24px !important;
+                margin-right: 10px !important;
+                text-align: center !important;
+                display: inline-block !important;
               }
 
               .sidebar-menu > li > a > span {
-                font-size: 15px !important;
+                font-size: 14px !important;
+                display: inline-block !important;
               }
 
-              /* Sidebar header styling */
-              .main-sidebar {
-                padding-top: 10px;
+              /* Ensure sidebar content is visible */
+              .sidebar {
+                overflow: visible !important;
               }
 
-              .sidebar-menu {
-                padding: 10px 0;
+              .left-side, .main-sidebar {
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+              }
+
+              /* Fix sidebar scrollbar and content visibility */
+              .slimScrollDiv {
+                overflow: visible !important;
+              }
+
+              .sidebar-form, .sidebar-menu > li.header {
+                overflow: visible !important;
               }
 
               /* Quick Case Lookup styling */
@@ -1833,15 +1867,15 @@ server <- function(input, output, session) {
     if (isTRUE(rv$logged_in)) {
       # Logged-in users see all menu items - Dashboard selected by default
       tagList(
-        menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt"), selected = TRUE),
-        menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
-        menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
-        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
+        menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard"), selected = TRUE),
+        menuItem("New Case", tabName = "new_case", icon = icon("plus")),
+        menuItem("All Cases", tabName = "all_cases", icon = icon("list-alt")),
+        menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"))
       )
     } else {
       # Non-logged-in users (analytics-only) see only analytics
       tagList(
-        menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"), selected = TRUE)
+        menuItem("Analytics", tabName = "analytics", icon = icon("bar-chart"), selected = TRUE)
       )
     }
   })
