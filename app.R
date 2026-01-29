@@ -1175,6 +1175,87 @@ ui <- tagList(
                 font-size: 11px;
                 opacity: 0.8;
               }
+
+              /* Enhanced Sidebar Menu Styling */
+              .sidebar-menu > li > a {
+                padding: 15px 20px !important;
+                font-size: 15px !important;
+                font-weight: 500 !important;
+                border-left: 4px solid transparent;
+                transition: all 0.2s ease;
+              }
+
+              .sidebar-menu > li > a:hover {
+                background-color: #2c5aa0 !important;
+                border-left: 4px solid #f59e0b;
+              }
+
+              .sidebar-menu > li.active > a {
+                background-color: #2c5aa0 !important;
+                border-left: 4px solid #f59e0b;
+              }
+
+              .sidebar-menu > li > a > i,
+              .sidebar-menu > li > a > .fa,
+              .sidebar-menu > li > a > .fas,
+              .sidebar-menu > li > a > .far {
+                font-size: 18px !important;
+                width: 28px !important;
+                margin-right: 12px !important;
+              }
+
+              .sidebar-menu > li > a > span {
+                font-size: 15px !important;
+              }
+
+              /* Sidebar header styling */
+              .main-sidebar {
+                padding-top: 10px;
+              }
+
+              .sidebar-menu {
+                padding: 10px 0;
+              }
+
+              /* Quick Case Lookup styling */
+              .sidebar .form-control {
+                background-color: rgba(255, 255, 255, 0.15) !important;
+                border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                color: white !important;
+                padding: 10px 12px !important;
+                font-size: 14px !important;
+                border-radius: 6px !important;
+              }
+
+              .sidebar .form-control::placeholder {
+                color: rgba(255, 255, 255, 0.6) !important;
+              }
+
+              .sidebar .form-control:focus {
+                background-color: rgba(255, 255, 255, 0.25) !important;
+                border-color: #f59e0b !important;
+                outline: none !important;
+                box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2) !important;
+              }
+
+              .sidebar h5 {
+                font-size: 14px !important;
+                font-weight: 600 !important;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+
+              .sidebar hr {
+                border-color: rgba(255, 255, 255, 0.2);
+                margin: 15px 0;
+              }
+
+              /* Logo area styling */
+              .main-header .logo {
+                font-size: 16px !important;
+                font-weight: 600 !important;
+                padding: 0 15px !important;
+              }
             "))
             ),
             
@@ -1579,7 +1660,7 @@ server <- function(input, output, session) {
   # --- Observe page state changes and show/hide overlays ---
   observeEvent(rv$page_state, {
     state <- rv$page_state
-    
+
     if (state == "landing") {
       shinyjs::show("landing_overlay")
       shinyjs::hide("login_overlay")
@@ -1592,13 +1673,14 @@ server <- function(input, output, session) {
       shinyjs::hide("landing_overlay")
       shinyjs::hide("login_overlay")
       shinyjs::show("main_app")
-      # Navigate to analytics tab
-      updateTabItems(session, "sidebar_menu", selected = "analytics")
+      # Navigate to analytics tab with delay to ensure menu is rendered
+      shinyjs::delay(100, updateTabItems(session, "sidebar_menu", selected = "analytics"))
     } else if (state == "dashboard") {
       shinyjs::hide("landing_overlay")
       shinyjs::hide("login_overlay")
       shinyjs::show("main_app")
-      updateTabItems(session, "sidebar_menu", selected = "dashboard")
+      # Navigate to dashboard tab with delay to ensure menu is rendered
+      shinyjs::delay(100, updateTabItems(session, "sidebar_menu", selected = "dashboard"))
     }
   })
   
@@ -1749,9 +1831,9 @@ server <- function(input, output, session) {
   # --- Dynamic Sidebar Menu ---
   output$sidebar_menu_items <- renderUI({
     if (isTRUE(rv$logged_in)) {
-      # Logged-in users see all menu items
+      # Logged-in users see all menu items - Dashboard selected by default
       tagList(
-        menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt")),
+        menuItem("Dashboard", tabName = "dashboard", icon = icon("tachometer-alt"), selected = TRUE),
         menuItem("New Case", tabName = "new_case", icon = icon("plus-circle")),
         menuItem("All Cases", tabName = "all_cases", icon = icon("list")),
         menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
