@@ -1,15 +1,1 @@
-# Environment variables (contains sensitive credentials)
-.env
 
-# R session files
-.Rhistory
-.RData
-.Rproj.user/
-
-# IDE
-.idea/
-.vscode/
-
-# OS files
-.DS_Store
-Thumbs.db
