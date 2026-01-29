@@ -147,6 +147,9 @@ onStop(function() {
 })
 
 # Enhanced connection helper with better error handling
+
+
+# Enhanced connection helper with better error handling
 con <- function() {
   if (is.null(pool)) {
     return(NULL)
@@ -158,6 +161,111 @@ con <- function() {
     return(NULL)
   })
 }
+
+
+
+
+# Database helper functions (existing ones)
+get_regional_performance <- function(con, months_back = 12) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT r.region_name,
+           COUNT(*) as total_cases,
+           SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as resolution_rate,
+           ROUND(AVG(CASE WHEN t.status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, t.closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           ROUND(SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as escalation_rate,
+           SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases
+    FROM tickets t
+    LEFT JOIN regions r ON t.region_id = r.region_id
+    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY r.region_name
+    ORDER BY resolution_rate DESC, total_cases DESC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_category_trends <- function(con, months_back = 12) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT DATE_FORMAT(t.created_at, '%Y-%m') as ym,
+           COALESCE(c.category_name,'Unknown') as category_name,
+           COUNT(*) as cases
+    FROM tickets t
+    LEFT JOIN issue_categories c ON t.category_id = c.category_id
+    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY ym, category_name
+    ORDER BY ym ASC, cases DESC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_time_series <- function(con, months_back = 18) {
+  if (is.null(con)) return(data.frame())
+  
+  q <- "
+    SELECT DATE_FORMAT(created_at, '%Y-%m') as ym,
+           COUNT(*) as created,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END),1) as avg_resolution_hours
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+    GROUP BY ym
+    ORDER BY ym ASC
+  "
+  dbGetQuery(con, q, params = list(months_back))
+}
+
+get_sla_overview <- function(con) {
+  if (is.null(con)) return(list(summary=data.frame(), by_region=data.frame(), overdue=data.frame()))
+  
+  summary_q <- "
+    SELECT
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
+      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND (resolution_due_at IS NULL OR resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
+    FROM tickets
+  "
+  
+  by_region_q <- "
+    SELECT r.region_name,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
+      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND (t.resolution_due_at IS NULL OR t.resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
+    FROM tickets t
+    LEFT JOIN regions r ON t.region_id = r.region_id
+    GROUP BY r.region_name
+    ORDER BY overdue DESC, due_soon DESC, open_cases DESC
+  "
+  
+  overdue_q <- "
+    SELECT ticket_id, case_code, priority, status, created_at, resolution_due_at,
+           TIMESTAMPDIFF(HOUR, resolution_due_at, NOW()) as hours_overdue
+    FROM tickets
+    WHERE status NOT IN ('Resolved','Closed')
+      AND resolution_due_at IS NOT NULL
+      AND resolution_due_at < NOW()
+    ORDER BY hours_overdue DESC
+    LIMIT 200
+  "
+  
+  list(
+    summary  = dbGetQuery(con, summary_q),
+    by_region = dbGetQuery(con, by_region_q),
+    overdue  = dbGetQuery(con, overdue_q)
+  )
+}
+
+
 
 
 
@@ -614,7 +722,7 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
 fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_id = NULL,
                           search_text = NULL, date_from = NULL, date_to = NULL, limit = 200) {
   if (is.null(con)) return(data.frame())
-
+  
   tryCatch({
     base_query <- "
       SELECT t.ticket_id, t.case_code, t.created_at, t.status, t.priority,
@@ -627,46 +735,46 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_
       LEFT JOIN issue_subcategories s ON s.subcategory_id = t.subcategory_id
       WHERE 1=1
     "
-
+    
     params <- list()
-
+    
     if (!is.null(region_id) && region_id != 0) {
       base_query <- paste(base_query, "AND t.region_id = ?")
       params <- append(params, region_id)
     }
-
+    
     if (!is.null(status_filter) && status_filter != "All") {
       base_query <- paste(base_query, "AND t.status = ?")
       params <- append(params, status_filter)
     }
-
+    
     if (!is.null(category_id) && category_id != 0) {
       base_query <- paste(base_query, "AND t.category_id = ?")
       params <- append(params, as.integer(category_id))
     }
-
+    
     if (!is.null(search_text) && nchar(trimws(search_text)) >= 2) {
       search_pattern <- paste0("%", trimws(search_text), "%")
       base_query <- paste(base_query, "AND (t.teacher_name LIKE ? OR t.teacher_phone LIKE ? OR t.teacher_staff_id LIKE ? OR t.case_code LIKE ? OR t.school_name LIKE ?)")
       params <- append(params, list(search_pattern, search_pattern, search_pattern, search_pattern, search_pattern))
     }
-
+    
     if (!is.null(date_from) && !is.na(date_from)) {
       base_query <- paste(base_query, "AND DATE(t.created_at) >= ?")
       params <- append(params, as.character(date_from))
     }
-
+    
     if (!is.null(date_to) && !is.na(date_to)) {
       base_query <- paste(base_query, "AND DATE(t.created_at) <= ?")
       params <- append(params, as.character(date_to))
     }
-
+    
     base_query <- paste(base_query, "ORDER BY t.created_at DESC LIMIT ?")
     params <- append(params, as.integer(limit))
-
+    
     result <- dbGetQuery(con, base_query, params = params)
     return(result)
-
+    
   }, error = function(e) {
     showNotification(paste("Error fetching tickets:", e$message), type = "error")
     return(data.frame())
@@ -767,146 +875,146 @@ get_dashboard_stats <- function(con, region_id = NULL) {
 # UI Definition with Landing Page, Authentication, and Role-Based Access
 ui <- tagList(
   useShinyjs(),
-
+  
   # ========================================
   # LANDING PAGE OVERLAY
   # ========================================
   div(id = "landing_overlay",
-    style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #2c5aa0 70%, #1e40af 100%); overflow-y: auto;",
-
-    # Top navigation bar
-    div(style = "padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;",
-      div(
-        tags$img(src = "https://upload.wikimedia.org/wikipedia/en/thumb/8/89/Coat_of_arms_of_Ghana.svg/100px-Coat_of_arms_of_Ghana.svg.png",
-                 height = "50px", style = "margin-right: 15px; vertical-align: middle;"),
-        tags$span("GES Teacher Support Helpline", style = "color: white; font-size: 22px; font-weight: bold; vertical-align: middle;")
+      style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #2c5aa0 70%, #1e40af 100%); overflow-y: auto;",
+      
+      # Top navigation bar
+      div(style = "padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;",
+          div(
+            tags$img(src = "https://upload.wikimedia.org/wikipedia/en/thumb/8/89/Coat_of_arms_of_Ghana.svg/100px-Coat_of_arms_of_Ghana.svg.png",
+                     height = "50px", style = "margin-right: 15px; vertical-align: middle;"),
+            tags$span("GES Teacher Support Helpline", style = "color: white; font-size: 22px; font-weight: bold; vertical-align: middle;")
+          ),
+          div(
+            actionButton("landing_analytics_btn", "View Analytics",
+                         class = "btn", style = "background: transparent; border: 2px solid white; color: white; margin-right: 10px; padding: 8px 24px; border-radius: 25px; font-weight: 600;"),
+            actionButton("landing_login_btn", "Staff Login",
+                         class = "btn", style = "background: white; color: #1e3a8a; border: 2px solid white; padding: 8px 24px; border-radius: 25px; font-weight: 600;")
+          )
       ),
-      div(
-        actionButton("landing_analytics_btn", "View Analytics",
-                     class = "btn", style = "background: transparent; border: 2px solid white; color: white; margin-right: 10px; padding: 8px 24px; border-radius: 25px; font-weight: 600;"),
-        actionButton("landing_login_btn", "Staff Login",
-                     class = "btn", style = "background: white; color: #1e3a8a; border: 2px solid white; padding: 8px 24px; border-radius: 25px; font-weight: 600;")
-      )
-    ),
-
-    # Hero section
-    div(style = "text-align: center; padding: 80px 40px 60px 40px; max-width: 900px; margin: 0 auto;",
-      tags$h1("Ghana Education Service", style = "color: white; font-size: 48px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px;"),
-      tags$h2("Teacher Support Helpline", style = "color: #93c5fd; font-size: 28px; font-weight: 400; margin-bottom: 30px;"),
-      tags$p("A centralized query tracking and case management system serving teachers across all 16 regions of Ghana. Log cases, track resolutions, and monitor performance in real-time.",
-             style = "color: #cbd5e1; font-size: 18px; line-height: 1.7; max-width: 700px; margin: 0 auto 40px auto;"),
-
-      div(style = "display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;",
-        actionButton("hero_login_btn", "Staff Login",
-                     class = "btn btn-lg", style = "background: #f59e0b; color: #0f172a; border: none; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 700; box-shadow: 0 4px 15px rgba(245,158,11,0.4);"),
-        actionButton("hero_analytics_btn", "View Public Analytics",
-                     class = "btn btn-lg", style = "background: transparent; border: 2px solid #93c5fd; color: #93c5fd; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 600;")
-      )
-    ),
-
-    # Feature cards
-    div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 60px 40px; max-width: 1200px; margin: 0 auto;",
-      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("headset")),
-        tags$h3("Case Management", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-        tags$p("Log, track, and resolve teacher queries efficiently across all regions.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      
+      # Hero section
+      div(style = "text-align: center; padding: 80px 40px 60px 40px; max-width: 900px; margin: 0 auto;",
+          tags$h1("Ghana Education Service", style = "color: white; font-size: 48px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px;"),
+          tags$h2("Teacher Support Helpline", style = "color: #93c5fd; font-size: 28px; font-weight: 400; margin-bottom: 30px;"),
+          tags$p("A centralized query tracking and case management system serving teachers across all 16 regions of Ghana. Log cases, track resolutions, and monitor performance in real-time.",
+                 style = "color: #cbd5e1; font-size: 18px; line-height: 1.7; max-width: 700px; margin: 0 auto 40px auto;"),
+          
+          div(style = "display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;",
+              actionButton("hero_login_btn", "Staff Login",
+                           class = "btn btn-lg", style = "background: #f59e0b; color: #0f172a; border: none; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 700; box-shadow: 0 4px 15px rgba(245,158,11,0.4);"),
+              actionButton("hero_analytics_btn", "View Public Analytics",
+                           class = "btn btn-lg", style = "background: transparent; border: 2px solid #93c5fd; color: #93c5fd; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 600;")
+          )
       ),
-      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("chart-line")),
-        tags$h3("Real-Time Analytics", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-        tags$p("Public dashboards showing regional performance, SLA monitoring, and trend analysis.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      
+      # Feature cards
+      div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 60px 40px; max-width: 1200px; margin: 0 auto;",
+          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("headset")),
+              tags$h3("Case Management", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+              tags$p("Log, track, and resolve teacher queries efficiently across all regions.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+          ),
+          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("chart-line")),
+              tags$h3("Real-Time Analytics", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+              tags$p("Public dashboards showing regional performance, SLA monitoring, and trend analysis.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+          ),
+          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
+              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("shield-alt")),
+              tags$h3("Role-Based Access", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
+              tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+          )
       ),
-      div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-        tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("shield-alt")),
-        tags$h3("Role-Based Access", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-        tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
+      
+      # Footer
+      div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
+          tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0;")
       )
-    ),
-
-    # Footer
-    div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
-      tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0;")
-    )
   ),
-
+  
   # ========================================
   # LOGIN OVERLAY
   # ========================================
   hidden(
     div(id = "login_overlay",
-      style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%); display: flex; align-items: center; justify-content: center;",
-
-      div(style = "background: white; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
-
-        # Back button
-        div(style = "margin-bottom: 20px;",
-          actionButton("login_back_btn", icon("arrow-left"), label = " Back to Home",
-                       class = "btn btn-link", style = "color: #6b7280; padding: 0; font-size: 14px; text-decoration: none;")
-        ),
-
-        div(style = "text-align: center; margin-bottom: 30px;",
-          tags$div(icon("user-shield"), style = "font-size: 48px; color: #1e3a8a; margin-bottom: 15px;"),
-          tags$h2("Staff Login", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 5px 0;"),
-          tags$p("Sign in with your GES email address", style = "color: #6b7280; margin: 0; font-size: 14px;")
-        ),
-
-        div(
-          textInput("login_email", "Email Address", placeholder = "enquiry.region@gmail.com",
-                    width = "100%"),
-          passwordInput("login_password", "Password", placeholder = "Enter your password",
+        style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%); display: flex; align-items: center; justify-content: center;",
+        
+        div(style = "background: white; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
+            
+            # Back button
+            div(style = "margin-bottom: 20px;",
+                actionButton("login_back_btn", icon("arrow-left"), label = " Back to Home",
+                             class = "btn btn-link", style = "color: #6b7280; padding: 0; font-size: 14px; text-decoration: none;")
+            ),
+            
+            div(style = "text-align: center; margin-bottom: 30px;",
+                tags$div(icon("user-shield"), style = "font-size: 48px; color: #1e3a8a; margin-bottom: 15px;"),
+                tags$h2("Staff Login", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 5px 0;"),
+                tags$p("Sign in with your GES email address", style = "color: #6b7280; margin: 0; font-size: 14px;")
+            ),
+            
+            div(
+              textInput("login_email", "Email Address", placeholder = "enquiry.region@gmail.com",
                         width = "100%"),
-          br(),
-          actionButton("login_btn", "Sign In", class = "btn btn-primary btn-block",
-                       style = "width: 100%; padding: 12px; font-size: 16px; font-weight: 600; background: #1e3a8a; border-color: #1e3a8a; border-radius: 8px;"),
-          br(), br(),
-          div(style = "text-align: center;",
-            tags$span(id = "login_msg_display", style = "color: #dc2626; font-weight: 500;",
-                      textOutput("login_msg", inline = TRUE))
-          )
+              passwordInput("login_password", "Password", placeholder = "Enter your password",
+                            width = "100%"),
+              br(),
+              actionButton("login_btn", "Sign In", class = "btn btn-primary btn-block",
+                           style = "width: 100%; padding: 12px; font-size: 16px; font-weight: 600; background: #1e3a8a; border-color: #1e3a8a; border-radius: 8px;"),
+              br(), br(),
+              div(style = "text-align: center;",
+                  tags$span(id = "login_msg_display", style = "color: #dc2626; font-weight: 500;",
+                            textOutput("login_msg", inline = TRUE))
+              )
+            )
         )
-      )
     )
   ),
-
+  
   # ========================================
   # MAIN DASHBOARD (hidden until login or analytics)
   # ========================================
   hidden(
     div(id = "main_app",
-      dashboardPage(
-        dashboardHeader(
-          title = "GES Teacher Support Helpline",
-          tags$li(class = "dropdown",
-                  tags$style(HTML("
+        dashboardPage(
+          dashboardHeader(
+            title = "GES Teacher Support Helpline",
+            tags$li(class = "dropdown",
+                    tags$style(HTML("
                     .main-header .navbar {background-color: #1e3a8a !important;}
                     .main-header .logo {background-color: #0f172a !important;}
                     .content-wrapper {background-color: #f8fafc;}
                   "))
+            ),
+            # User info and logout in header
+            tags$li(class = "dropdown",
+                    uiOutput("user_info_header")
+            )
           ),
-          # User info and logout in header
-          tags$li(class = "dropdown",
-                  uiOutput("user_info_header")
-          )
-        ),
-
-        dashboardSidebar(
-          sidebarMenu(
-            id = "sidebar_menu",
-
-            # These menu items are conditionally shown via server-side rendering
-            uiOutput("sidebar_menu_items")
+          
+          dashboardSidebar(
+            sidebarMenu(
+              id = "sidebar_menu",
+              
+              # These menu items are conditionally shown via server-side rendering
+              uiOutput("sidebar_menu_items")
+            ),
+            
+            # Quick Case Lookup in sidebar (only visible when logged in)
+            uiOutput("sidebar_quick_search")
           ),
-
-          # Quick Case Lookup in sidebar (only visible when logged in)
-          uiOutput("sidebar_quick_search")
-        ),
-
-        dashboardBody(
-          use_theme(mytheme),
-
-          # Enhanced CSS for modern styling and case details
-          tags$head(
-            tags$style(HTML("
+          
+          dashboardBody(
+            use_theme(mytheme),
+            
+            # Enhanced CSS for modern styling and case details
+            tags$head(
+              tags$style(HTML("
               .content-wrapper, .right-side {
                 background-color: #f8fafc;
               }
@@ -1068,387 +1176,387 @@ ui <- tagList(
                 opacity: 0.8;
               }
             "))
-          ),
-
-          # Case Details Modal
-          tags$div(id = "caseDetailsModal", class = "modal fade", tabindex = "-1", role = "dialog",
-                   tags$div(class = "modal-dialog modal-xl", role = "document",
-                            tags$div(class = "modal-content",
-                                     tags$div(class = "modal-body", style = "padding: 0;",
-                                              uiOutput("case_details_content")
-                                     ),
-                                     tags$div(class = "modal-footer",
-                                              actionButton("closeCaseDetails", "Close", class = "btn btn-default")
-                                     )
-                            )
-                   )
-          ),
-
-          tabItems(
-            # Dashboard Tab with sub-tabs
-            tabItem(
-              tabName = "dashboard",
-        tabsetPanel(
-          # Case Summary Tab
-          tabPanel(
-            title = "Case Summary",
-            br(),
-            # Row 1: Primary KPIs
-            fluidRow(
-              infoBoxOutput("total_cases"),
-              infoBoxOutput("new_cases"),
-              infoBoxOutput("in_progress_cases"),
-              infoBoxOutput("escalated_cases")
-            ),
-            # Row 2: Secondary KPIs
-            fluidRow(
-              infoBoxOutput("waiting_cases"),
-              infoBoxOutput("resolved_cases"),
-              infoBoxOutput("closed_cases"),
-              infoBoxOutput("overdue_cases_kpi")
-            ),
-
-            fluidRow(
-              box(
-                title = "Performance Metrics", status = "primary", solidHeader = TRUE,
-                width = 6, height = 300,
-                tableOutput("performance_metrics")
-              ),
-
-              box(
-                title = "Cases by Priority", status = "primary", solidHeader = TRUE,
-                width = 6, height = 300,
-                withSpinner(plotlyOutput("priority_chart", height = "250px"))
-              )
-            ),
-
-            fluidRow(
-              box(
-                title = "Recent Cases", status = "info", solidHeader = TRUE,
-                width = 12,
-                fluidRow(
-                  column(12, style = "text-align: right; margin-bottom: 10px;",
-                         tags$small(textOutput("auto_refresh_status", inline = TRUE), style = "color: #6b7280;"),
-                         actionButton("manual_refresh_dashboard", "Refresh Now", class = "btn-xs btn-info", style = "margin-left: 10px;")
-                  )
-                ),
-                withSpinner(DT::dataTableOutput("recent_cases_table"))
-              )
-            )
-          ),
-          
-          # Detail of Cases Tab
-          tabPanel(
-            title = "Detail of Cases",
-            br(),
-            fluidRow(
-              box(
-                title = "My Cases", status = "primary", solidHeader = TRUE,
-                width = 12,
-                
-                fluidRow(
-                  column(4,
-                         selectInput("my_status_filter", "Status Filter",
-                                     choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
-                  ),
-                  column(4,
-                         uiOutput("my_region_filter_ui")
-                  ),
-                  column(4,
-                         actionButton("refresh_my_cases", "Refresh", class = "btn-info",
-                                      style = "margin-top: 25px;")
-                  )
-                ),
-                
-                withSpinner(DT::dataTableOutput("my_cases_table"))
-              )
-            )
-          )
-        )
-      ),
-      
-      # New Case Tab (unchanged from original)
-      tabItem(
-        tabName = "new_case",
-        fluidRow(
-          box(
-            title = "Log New Teacher Support Case", status = "primary", solidHeader = TRUE,
-            width = 12,
-            
-            h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
-            
-            fluidRow(
-              column(6,
-                     textInput("teacher_name", "Teacher/Caller Name *", 
-                               placeholder = "Full name of person calling"),
-                     textInput("teacher_phone", "Contact Number *", 
-                               placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
-                     textInput("teacher_staff_id", "Staff ID", 
-                               placeholder = "Teacher staff ID (if available)")
-              ),
-              column(6,
-                     uiOutput("region_select_ui"),
-                     textInput("district", "District", placeholder = "District name"),
-                     textInput("school_name", "School Name", placeholder = "Name of school")
-              )
             ),
             
-            hr(),
-            
-            h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
-            
-            fluidRow(
-              column(6,
-                     uiOutput("channel_select_ui"),
-                     uiOutput("category_select_ui"),
-                     uiOutput("subcategory_select_ui")
-              ),
-              column(6,
-                     selectInput("priority", "Priority Level *",
-                                 choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
-                                 selected = "Medium"),
-                     checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
-              )
-            ),
-            
-            fluidRow(
-              column(12,
-                     textAreaInput("case_summary", "Case Summary *", 
-                                   placeholder = "Brief summary of the issue (minimum 20 characters)...",
-                                   height = "100px"),
-                     textAreaInput("case_description", "Detailed Description", 
-                                   placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
-                                   height = "120px")
-              )
-            ),
-            
-            hr(),
-            
-            fluidRow(
-              column(12, align = "center",
-                     actionButton("save_case", "Create Case", 
-                                  class = "btn-primary btn-lg", 
-                                  style = "margin: 10px; padding: 10px 30px;"),
-                     actionButton("clear_form", "Clear Form", 
-                                  class = "btn-default btn-lg",
-                                  style = "margin: 10px; padding: 10px 30px;")
-              )
-            )
-          )
-        )
-      ),
-      
-      # All Cases Tab
-      tabItem(
-        tabName = "all_cases",
-        fluidRow(
-          box(
-            title = "All Cases", status = "primary", solidHeader = TRUE,
-            width = 12,
-
-            # Row 1: Search and status/region/category filters
-            fluidRow(
-              column(4,
-                     textInput("all_search_text", "Search (Name, Phone, Staff ID, Case Code, School)",
-                               placeholder = "Type to search...")
-              ),
-              column(2,
-                     selectInput("all_status_filter", "Status",
-                                 choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
-              ),
-              column(2,
-                     uiOutput("all_region_filter_ui")
-              ),
-              column(2,
-                     uiOutput("all_category_filter_ui")
-              ),
-              column(2,
-                     actionButton("refresh_all_cases", "Refresh", class = "btn-info",
-                                  style = "margin-top: 25px; width: 100%;")
-              )
-            ),
-
-            # Row 2: Date range filters
-            fluidRow(
-              column(3,
-                     dateInput("all_date_from", "From Date", value = NULL, format = "yyyy-mm-dd")
-              ),
-              column(3,
-                     dateInput("all_date_to", "To Date", value = NULL, format = "yyyy-mm-dd")
-              ),
-              column(3,
-                     actionButton("clear_all_filters", "Clear All Filters", class = "btn-default",
-                                  style = "margin-top: 25px;")
-              ),
-              column(3,
-                     div(style = "margin-top: 25px; text-align: right;",
-                         downloadButton("export_cases_csv", "Export CSV", class = "btn-sm btn-success")
+            # Case Details Modal
+            tags$div(id = "caseDetailsModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog modal-xl", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-body", style = "padding: 0;",
+                                                uiOutput("case_details_content")
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("closeCaseDetails", "Close", class = "btn btn-default")
+                                       )
+                              )
                      )
-              )
             ),
-
-            hr(),
-            withSpinner(DT::dataTableOutput("all_cases_table"))
-          )
-        )
-      ),
-      
-      # Analytics Tab (unchanged from original)
-      tabItem(
-        tabName = "analytics",
-        
-        # Top KPIs
-        fluidRow(
-          infoBoxOutput("analytics_total"),
-          infoBoxOutput("analytics_resolved"),
-          infoBoxOutput("analytics_resolution_rate"),
-          infoBoxOutput("analytics_avg_time")
-        ),
-        
-        br(),
-        
-        tabsetPanel(
-          id = "analytics_tabs",
-          
-          # 1) Regional Performance
-          tabPanel(
-            "Regional Performance",
-            fluidRow(
-              box(
-                title = "Resolution Rate by Region",
-                status = "primary", solidHeader = TRUE,
-                width = 8, height = 420,
-                withSpinner(plotlyOutput("region_resolution_chart", height = "360px"))
+            
+            tabItems(
+              # Dashboard Tab with sub-tabs
+              tabItem(
+                tabName = "dashboard",
+                tabsetPanel(
+                  # Case Summary Tab
+                  tabPanel(
+                    title = "Case Summary",
+                    br(),
+                    # Row 1: Primary KPIs
+                    fluidRow(
+                      infoBoxOutput("total_cases"),
+                      infoBoxOutput("new_cases"),
+                      infoBoxOutput("in_progress_cases"),
+                      infoBoxOutput("escalated_cases")
+                    ),
+                    # Row 2: Secondary KPIs
+                    fluidRow(
+                      infoBoxOutput("waiting_cases"),
+                      infoBoxOutput("resolved_cases"),
+                      infoBoxOutput("closed_cases"),
+                      infoBoxOutput("overdue_cases_kpi")
+                    ),
+                    
+                    fluidRow(
+                      box(
+                        title = "Performance Metrics", status = "primary", solidHeader = TRUE,
+                        width = 6, height = 300,
+                        tableOutput("performance_metrics")
+                      ),
+                      
+                      box(
+                        title = "Cases by Priority", status = "primary", solidHeader = TRUE,
+                        width = 6, height = 300,
+                        withSpinner(plotlyOutput("priority_chart", height = "250px"))
+                      )
+                    ),
+                    
+                    fluidRow(
+                      box(
+                        title = "Recent Cases", status = "info", solidHeader = TRUE,
+                        width = 12,
+                        fluidRow(
+                          column(12, style = "text-align: right; margin-bottom: 10px;",
+                                 tags$small(textOutput("auto_refresh_status", inline = TRUE), style = "color: #6b7280;"),
+                                 actionButton("manual_refresh_dashboard", "Refresh Now", class = "btn-xs btn-info", style = "margin-left: 10px;")
+                          )
+                        ),
+                        withSpinner(DT::dataTableOutput("recent_cases_table"))
+                      )
+                    )
+                  ),
+                  
+                  # Detail of Cases Tab
+                  tabPanel(
+                    title = "Detail of Cases",
+                    br(),
+                    fluidRow(
+                      box(
+                        title = "My Cases", status = "primary", solidHeader = TRUE,
+                        width = 12,
+                        
+                        fluidRow(
+                          column(4,
+                                 selectInput("my_status_filter", "Status Filter",
+                                             choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
+                          ),
+                          column(4,
+                                 uiOutput("my_region_filter_ui")
+                          ),
+                          column(4,
+                                 actionButton("refresh_my_cases", "Refresh", class = "btn-info",
+                                              style = "margin-top: 25px;")
+                          )
+                        ),
+                        
+                        withSpinner(DT::dataTableOutput("my_cases_table"))
+                      )
+                    )
+                  )
+                )
               ),
-              box(
-                title = "Backlog by Region",
-                status = "info", solidHeader = TRUE,
-                width = 4, height = 420,
-                withSpinner(plotlyOutput("region_backlog_chart", height = "360px"))
-              )
-            ),
-            fluidRow(
-              box(
-                title = "Regional Performance Table",
-                status = "primary", solidHeader = TRUE,
-                width = 12,
-                withSpinner(DTOutput("region_table"))
-              )
-            )
-          ),
-          
-          # 2) Category Trends
-          tabPanel(
-            "Category Trends",
-            fluidRow(
-              box(
-                title = "Top Categories Over Time",
-                status = "primary", solidHeader = TRUE,
-                width = 8, height = 420,
-                withSpinner(plotlyOutput("category_trend_chart", height = "360px"))
+              
+              # New Case Tab (unchanged from original)
+              tabItem(
+                tabName = "new_case",
+                fluidRow(
+                  box(
+                    title = "Log New Teacher Support Case", status = "primary", solidHeader = TRUE,
+                    width = 12,
+                    
+                    h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
+                    
+                    fluidRow(
+                      column(6,
+                             textInput("teacher_name", "Teacher/Caller Name *", 
+                                       placeholder = "Full name of person calling"),
+                             textInput("teacher_phone", "Contact Number *", 
+                                       placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
+                             textInput("teacher_staff_id", "Staff ID", 
+                                       placeholder = "Teacher staff ID (if available)")
+                      ),
+                      column(6,
+                             uiOutput("region_select_ui"),
+                             textInput("district", "District", placeholder = "District name"),
+                             textInput("school_name", "School Name", placeholder = "Name of school")
+                      )
+                    ),
+                    
+                    hr(),
+                    
+                    h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
+                    
+                    fluidRow(
+                      column(6,
+                             uiOutput("channel_select_ui"),
+                             uiOutput("category_select_ui"),
+                             uiOutput("subcategory_select_ui")
+                      ),
+                      column(6,
+                             selectInput("priority", "Priority Level *",
+                                         choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
+                                         selected = "Medium"),
+                             checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
+                      )
+                    ),
+                    
+                    fluidRow(
+                      column(12,
+                             textAreaInput("case_summary", "Case Summary *", 
+                                           placeholder = "Brief summary of the issue (minimum 20 characters)...",
+                                           height = "100px"),
+                             textAreaInput("case_description", "Detailed Description", 
+                                           placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
+                                           height = "120px")
+                      )
+                    ),
+                    
+                    hr(),
+                    
+                    fluidRow(
+                      column(12, align = "center",
+                             actionButton("save_case", "Create Case", 
+                                          class = "btn-primary btn-lg", 
+                                          style = "margin: 10px; padding: 10px 30px;"),
+                             actionButton("clear_form", "Clear Form", 
+                                          class = "btn-default btn-lg",
+                                          style = "margin: 10px; padding: 10px 30px;")
+                      )
+                    )
+                  )
+                )
               ),
-              box(
-                title = "Current Month Movement",
-                status = "warning", solidHeader = TRUE,
-                width = 4, height = 420,
-                withSpinner(DTOutput("category_movement_table"))
-              )
-            ),
-            fluidRow(
-              box(
-                title = "Category Trend Table (All)",
-                status = "primary", solidHeader = TRUE,
-                width = 12,
-                withSpinner(DTOutput("category_trend_table"))
-              )
-            )
-          ),
-          
-          # 3) SLA Monitoring
-          tabPanel(
-            "SLA Monitoring",
-            fluidRow(
-              box(
-                title = "SLA Overview",
-                status = "primary", solidHeader = TRUE,
-                width = 6, height = 360,
-                withSpinner(plotlyOutput("sla_overview_chart", height = "300px"))
+              
+              # All Cases Tab
+              tabItem(
+                tabName = "all_cases",
+                fluidRow(
+                  box(
+                    title = "All Cases", status = "primary", solidHeader = TRUE,
+                    width = 12,
+                    
+                    # Row 1: Search and status/region/category filters
+                    fluidRow(
+                      column(4,
+                             textInput("all_search_text", "Search (Name, Phone, Staff ID, Case Code, School)",
+                                       placeholder = "Type to search...")
+                      ),
+                      column(2,
+                             selectInput("all_status_filter", "Status",
+                                         choices = c("All", "New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed"))
+                      ),
+                      column(2,
+                             uiOutput("all_region_filter_ui")
+                      ),
+                      column(2,
+                             uiOutput("all_category_filter_ui")
+                      ),
+                      column(2,
+                             actionButton("refresh_all_cases", "Refresh", class = "btn-info",
+                                          style = "margin-top: 25px; width: 100%;")
+                      )
+                    ),
+                    
+                    # Row 2: Date range filters
+                    fluidRow(
+                      column(3,
+                             dateInput("all_date_from", "From Date", value = NULL, format = "yyyy-mm-dd")
+                      ),
+                      column(3,
+                             dateInput("all_date_to", "To Date", value = NULL, format = "yyyy-mm-dd")
+                      ),
+                      column(3,
+                             actionButton("clear_all_filters", "Clear All Filters", class = "btn-default",
+                                          style = "margin-top: 25px;")
+                      ),
+                      column(3,
+                             div(style = "margin-top: 25px; text-align: right;",
+                                 downloadButton("export_cases_csv", "Export CSV", class = "btn-sm btn-success")
+                             )
+                      )
+                    ),
+                    
+                    hr(),
+                    withSpinner(DT::dataTableOutput("all_cases_table"))
+                  )
+                )
               ),
-              box(
-                title = "SLA by Region",
-                status = "info", solidHeader = TRUE,
-                width = 6, height = 360,
-                withSpinner(plotlyOutput("sla_region_chart", height = "300px"))
-              )
-            ),
-            fluidRow(
-              box(
-                title = "Overdue Cases",
-                status = "danger", solidHeader = TRUE,
-                width = 12,
-                withSpinner(DTOutput("sla_overdue_table"))
-              )
-            )
-          ),
-          
-          # 4) Time Series
-          tabPanel(
-            "Time Series",
-            fluidRow(
-              box(
-                title = "Monthly Created vs Resolved",
-                status = "primary", solidHeader = TRUE,
-                width = 8, height = 420,
-                withSpinner(plotlyOutput("monthly_created_resolved_chart", height = "360px"))
-              ),
-              box(
-                title = "Average Resolution Time (Hours)",
-                status = "info", solidHeader = TRUE,
-                width = 4, height = 420,
-                withSpinner(plotlyOutput("monthly_avg_resolution_chart", height = "360px"))
-              )
-            ),
-            fluidRow(
-              box(
-                title = "Monthly Trend Table",
-                status = "primary", solidHeader = TRUE,
-                width = 12,
-                withSpinner(DTOutput("monthly_trend_table"))
-              )
-            )
-          ),
-          
-          # 5) Exports
-          tabPanel(
-            "Exports",
-            fluidRow(
-              box(
-                title = "Export Reports",
-                status = "primary", solidHeader = TRUE,
-                width = 12,
-                p("Download the latest analytics outputs for reporting and briefings."),
+              
+              # Analytics Tab (unchanged from original)
+              tabItem(
+                tabName = "analytics",
+                
+                # Top KPIs
+                fluidRow(
+                  infoBoxOutput("analytics_total"),
+                  infoBoxOutput("analytics_resolved"),
+                  infoBoxOutput("analytics_resolution_rate"),
+                  infoBoxOutput("analytics_avg_time")
+                ),
+                
                 br(),
-                downloadButton("export_excel", "Download Excel", class = "btn-primary"),
-                tags$span(style = "padding-left: 10px;"),
-                downloadButton("export_pdf", "Download PDF", class = "btn-secondary"),
-                br(), br(),
-                tags$small("Note: PDF export may require additional server setup (R Markdown/LaTeX). If unavailable, we can export HTML instead.")
+                
+                tabsetPanel(
+                  id = "analytics_tabs",
+                  
+                  # 1) Regional Performance
+                  tabPanel(
+                    "Regional Performance",
+                    fluidRow(
+                      box(
+                        title = "Resolution Rate by Region",
+                        status = "primary", solidHeader = TRUE,
+                        width = 8, height = 420,
+                        withSpinner(plotlyOutput("region_resolution_chart", height = "360px"))
+                      ),
+                      box(
+                        title = "Backlog by Region",
+                        status = "info", solidHeader = TRUE,
+                        width = 4, height = 420,
+                        withSpinner(plotlyOutput("region_backlog_chart", height = "360px"))
+                      )
+                    ),
+                    fluidRow(
+                      box(
+                        title = "Regional Performance Table",
+                        status = "primary", solidHeader = TRUE,
+                        width = 12,
+                        withSpinner(DTOutput("region_table"))
+                      )
+                    )
+                  ),
+                  
+                  # 2) Category Trends
+                  tabPanel(
+                    "Category Trends",
+                    fluidRow(
+                      box(
+                        title = "Top Categories Over Time",
+                        status = "primary", solidHeader = TRUE,
+                        width = 8, height = 420,
+                        withSpinner(plotlyOutput("category_trend_chart", height = "360px"))
+                      ),
+                      box(
+                        title = "Current Month Movement",
+                        status = "warning", solidHeader = TRUE,
+                        width = 4, height = 420,
+                        withSpinner(DTOutput("category_movement_table"))
+                      )
+                    ),
+                    fluidRow(
+                      box(
+                        title = "Category Trend Table (All)",
+                        status = "primary", solidHeader = TRUE,
+                        width = 12,
+                        withSpinner(DTOutput("category_trend_table"))
+                      )
+                    )
+                  ),
+                  
+                  # 3) SLA Monitoring
+                  tabPanel(
+                    "SLA Monitoring",
+                    fluidRow(
+                      box(
+                        title = "SLA Overview",
+                        status = "primary", solidHeader = TRUE,
+                        width = 6, height = 360,
+                        withSpinner(plotlyOutput("sla_overview_chart", height = "300px"))
+                      ),
+                      box(
+                        title = "SLA by Region",
+                        status = "info", solidHeader = TRUE,
+                        width = 6, height = 360,
+                        withSpinner(plotlyOutput("sla_region_chart", height = "300px"))
+                      )
+                    ),
+                    fluidRow(
+                      box(
+                        title = "Overdue Cases",
+                        status = "danger", solidHeader = TRUE,
+                        width = 12,
+                        withSpinner(DTOutput("sla_overdue_table"))
+                      )
+                    )
+                  ),
+                  
+                  # 4) Time Series
+                  tabPanel(
+                    "Time Series",
+                    fluidRow(
+                      box(
+                        title = "Monthly Created vs Resolved",
+                        status = "primary", solidHeader = TRUE,
+                        width = 8, height = 420,
+                        withSpinner(plotlyOutput("monthly_created_resolved_chart", height = "360px"))
+                      ),
+                      box(
+                        title = "Average Resolution Time (Hours)",
+                        status = "info", solidHeader = TRUE,
+                        width = 4, height = 420,
+                        withSpinner(plotlyOutput("monthly_avg_resolution_chart", height = "360px"))
+                      )
+                    ),
+                    fluidRow(
+                      box(
+                        title = "Monthly Trend Table",
+                        status = "primary", solidHeader = TRUE,
+                        width = 12,
+                        withSpinner(DTOutput("monthly_trend_table"))
+                      )
+                    )
+                  ),
+                  
+                  # 5) Exports
+                  tabPanel(
+                    "Exports",
+                    fluidRow(
+                      box(
+                        title = "Export Reports",
+                        status = "primary", solidHeader = TRUE,
+                        width = 12,
+                        p("Download the latest analytics outputs for reporting and briefings."),
+                        br(),
+                        downloadButton("export_excel", "Download Excel", class = "btn-primary"),
+                        tags$span(style = "padding-left: 10px;"),
+                        downloadButton("export_pdf", "Download PDF", class = "btn-secondary"),
+                        br(), br(),
+                        tags$small("Note: PDF export may require additional server setup (R Markdown/LaTeX). If unavailable, we can export HTML instead.")
+                      )
+                    )
+                  )
+                )
               )
+              ####
             )
           )
-        )
-      )
-      ####
-    )
-  )
-) # end dashboardPage
+        ) # end dashboardPage
     ) # end div#main_app
   ) # end hidden
 ) # end tagList (ui)
 
 # Server Logic with Enhanced Case Management
 server <- function(input, output, session) {
-
+  
   # ========================================
   # Authentication & Page State Management
   # ========================================
@@ -1457,7 +1565,7 @@ server <- function(input, output, session) {
     user = NULL,
     page_state = "landing"  # "landing", "login", "analytics", "dashboard"
   )
-
+  
   # --- Landing page button handlers ---
   observeEvent(input$landing_login_btn, { rv$page_state <- "login" })
   observeEvent(input$hero_login_btn, { rv$page_state <- "login" })
@@ -1467,11 +1575,11 @@ server <- function(input, output, session) {
     rv$page_state <- "landing"
     output$login_msg <- renderText("")
   })
-
+  
   # --- Observe page state changes and show/hide overlays ---
   observeEvent(rv$page_state, {
     state <- rv$page_state
-
+    
     if (state == "landing") {
       shinyjs::show("landing_overlay")
       shinyjs::hide("login_overlay")
@@ -1493,7 +1601,7 @@ server <- function(input, output, session) {
       updateTabItems(session, "sidebar_menu", selected = "dashboard")
     }
   })
-
+  
   # --- Login handler ---
   get_user_by_email <- function(conn, email) {
     DBI::dbGetQuery(conn, "
@@ -1503,7 +1611,7 @@ server <- function(input, output, session) {
       LIMIT 1
     ", params = list(email))
   }
-
+  
   is_allowlisted <- function(conn, email) {
     out <- DBI::dbGetQuery(conn, "
       SELECT email, is_active
@@ -1513,75 +1621,75 @@ server <- function(input, output, session) {
     ", params = list(email))
     nrow(out) == 1 && isTRUE(out$is_active[1] == 1)
   }
-
+  
   can_see_all_regions <- function(role) {
     role %in% c("National Admin", "National Resolver")
   }
-
+  
   # Log activity helper
   log_activity <- function(conn, user_id, action, details = NULL) {
     tryCatch({
       DBI::dbExecute(conn,
-        "INSERT INTO login_audit (email, user_id, success, reason)
+                     "INSERT INTO login_audit (email, user_id, success, reason)
          VALUES ((SELECT email FROM users WHERE user_id = ?), ?, 1, ?)",
-        params = list(user_id, user_id, paste0("ACTION: ", action, if (!is.null(details)) paste0(" | ", details) else ""))
+                     params = list(user_id, user_id, paste0("ACTION: ", action, if (!is.null(details)) paste0(" | ", details) else ""))
       )
     }, error = function(e) {
       # Silently fail on activity logging errors
     })
   }
-
+  
   observeEvent(input$login_btn, {
     req(input$login_email, input$login_password)
     email <- trimws(tolower(input$login_email))
     pwd <- input$login_password
-
+    
     tryCatch({
       poolWithTransaction(pool, function(conn) {
-
+        
         if (!is_allowlisted(conn, email)) {
           try(DBI::dbExecute(conn,
-            "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-            params = list(email, "Email not allowlisted or inactive")
+                             "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
+                             params = list(email, "Email not allowlisted or inactive")
           ), silent = TRUE)
           output$login_msg <- renderText("Access denied. Email not authorized.")
           return()
         }
-
+        
         u <- get_user_by_email(conn, email)
         if (nrow(u) == 0 || !isTRUE(u$is_active[1] == 1)) {
           try(DBI::dbExecute(conn,
-            "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-            params = list(email, "User missing or inactive")
+                             "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
+                             params = list(email, "User missing or inactive")
           ), silent = TRUE)
           output$login_msg <- renderText("Account not available.")
           return()
         }
-
+        
         ok <- FALSE
         try({ ok <- bcrypt::checkpw(pwd, u$password_hash[1]) }, silent = TRUE)
-
+        
         if (!isTRUE(ok)) {
           try(DBI::dbExecute(conn,
-            "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 0, ?)",
-            params = list(email, u$user_id[1], "Invalid password")
+                             "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 0, ?)",
+                             params = list(email, u$user_id[1], "Invalid password")
           ), silent = TRUE)
           output$login_msg <- renderText("Invalid credentials.")
           return()
         }
-
+        
         # Successful login
         try(DBI::dbExecute(conn,
-          "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Login successful')",
-          params = list(email, u$user_id[1])
+                           "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Login successful')",
+                           params = list(email, u$user_id[1])
         ), silent = TRUE)
-
+        
         # Update last_login
         try(DBI::dbExecute(conn,
-          "UPDATE users SET last_login = NOW() WHERE user_id = ?",
-          params = list(u$user_id[1])
+                           "UPDATE users SET last_login = NOW() WHERE user_id = ?",
+                           params = list(u$user_id[1])
         ), silent = TRUE)
-
+        
         rv$logged_in <- TRUE
         rv$user <- u[1, ]
         rv$page_state <- "dashboard"
@@ -1591,7 +1699,7 @@ server <- function(input, output, session) {
       output$login_msg <- renderText("Connection error. Please try again.")
     })
   })
-
+  
   # --- Logout handler ---
   observeEvent(input$logout_btn, {
     if (!is.null(rv$user)) {
@@ -1605,39 +1713,39 @@ server <- function(input, output, session) {
     updateTextInput(session, "login_email", value = "")
     updateTextInput(session, "login_password", value = "")
   })
-
+  
   # --- Back to landing from analytics (for non-logged-in users) ---
   observeEvent(input$back_to_landing_btn, {
     rv$page_state <- "landing"
   })
-
+  
   # --- Auth reactive output (for conditionalPanel if needed) ---
   output$auth <- reactive({ isTRUE(rv$logged_in) })
   outputOptions(output, "auth", suspendWhenHidden = FALSE)
-
+  
   # --- User info in header ---
   output$user_info_header <- renderUI({
     if (isTRUE(rv$logged_in) && !is.null(rv$user)) {
       div(class = "user-header-info",
-        div(
-          div(class = "user-name", rv$user$full_name),
-          div(class = "user-role", rv$user$role)
-        ),
-        actionButton("logout_btn", "Logout", class = "btn btn-sm",
-                     style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+          div(
+            div(class = "user-name", rv$user$full_name),
+            div(class = "user-role", rv$user$role)
+          ),
+          actionButton("logout_btn", "Logout", class = "btn btn-sm",
+                       style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
       )
     } else {
       div(class = "user-header-info",
-        actionButton("header_login_btn", "Staff Login", class = "btn btn-sm",
-                     style = "background: #f59e0b; color: #0f172a; border: none; border-radius: 4px; font-weight: 600;"),
-        actionButton("back_to_landing_btn", "Home", class = "btn btn-sm",
-                     style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+          actionButton("header_login_btn", "Staff Login", class = "btn btn-sm",
+                       style = "background: #f59e0b; color: #0f172a; border: none; border-radius: 4px; font-weight: 600;"),
+          actionButton("back_to_landing_btn", "Home", class = "btn btn-sm",
+                       style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
       )
     }
   })
-
+  
   observeEvent(input$header_login_btn, { rv$page_state <- "login" })
-
+  
   # --- Dynamic Sidebar Menu ---
   output$sidebar_menu_items <- renderUI({
     if (isTRUE(rv$logged_in)) {
@@ -1655,28 +1763,28 @@ server <- function(input, output, session) {
       )
     }
   })
-
+  
   # --- Quick Case Lookup (only for logged-in users) ---
   output$sidebar_quick_search <- renderUI({
     if (isTRUE(rv$logged_in)) {
       tagList(
         hr(),
         div(style = "padding: 10px 15px;",
-          h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
-          textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
-          actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
+            h5("Quick Case Lookup", style = "color: #ffffff; margin-bottom: 10px;"),
+            textInput("quick_search_code", NULL, placeholder = "Enter Case Code..."),
+            actionButton("quick_search_btn", "Find Case", class = "btn-sm btn-info", style = "width: 100%;")
         )
       )
     }
   })
-
+  
   # --- Helper: Get user's allowed region_id for filtering ---
   user_region_id <- reactive({
     if (!isTRUE(rv$logged_in) || is.null(rv$user)) return(NULL)
     if (can_see_all_regions(rv$user$role)) return(NULL)  # NULL = see all
     return(rv$user$region_id)
   })
-
+  
   # ========================================
   # Reactive data (existing)
   # ========================================
@@ -1704,7 +1812,7 @@ server <- function(input, output, session) {
   output$region_select_ui <- renderUI({
     regions_df <- regions()
     forced_region <- user_region_id()
-
+    
     if (!is.null(forced_region)) {
       # Regional users can only create cases for their region
       region_row <- regions_df[regions_df$region_id == forced_region, ]
@@ -1756,7 +1864,7 @@ server <- function(input, output, session) {
   output$my_region_filter_ui <- renderUI({
     regions_df <- regions()
     forced_region <- user_region_id()
-
+    
     if (!is.null(forced_region)) {
       # Regional users can only see their own region
       region_row <- regions_df[regions_df$region_id == forced_region, ]
@@ -1768,11 +1876,11 @@ server <- function(input, output, session) {
                   choices = c("All Regions" = 0, setNames(regions_df$region_id, regions_df$region_name)))
     }
   })
-
+  
   output$all_region_filter_ui <- renderUI({
     regions_df <- regions()
     forced_region <- user_region_id()
-
+    
     if (!is.null(forced_region)) {
       region_row <- regions_df[regions_df$region_id == forced_region, ]
       selectInput("all_region_filter", "Region Filter",
@@ -1793,7 +1901,7 @@ server <- function(input, output, session) {
   # Auto-refresh: invalidate dashboard data every 5 minutes
   auto_refresh_timer <- reactiveTimer(300000)  # 300,000 ms = 5 minutes
   dashboard_stats_invalidator <- reactiveVal(0)
-
+  
   # Dashboard KPIs (auto-refreshing) - filtered by user's region
   dashboard_stats <- reactive({
     auto_refresh_timer()
@@ -1841,7 +1949,7 @@ server <- function(input, output, session) {
   output$escalated_cases <- renderInfoBox({
     stats <- dashboard_stats()
     escalated_count <- sum(stats$status$count[stats$status$status == "Escalated"], na.rm = TRUE)
-
+    
     infoBox(
       title = "Escalated",
       value = escalated_count,
@@ -1849,7 +1957,7 @@ server <- function(input, output, session) {
       color = "red"
     )
   })
-
+  
   output$waiting_cases <- renderInfoBox({
     stats <- dashboard_stats()
     waiting_count <- sum(stats$status$count[stats$status$status == "Waiting on Teacher"], na.rm = TRUE)
@@ -1860,7 +1968,7 @@ server <- function(input, output, session) {
       color = "purple"
     )
   })
-
+  
   output$resolved_cases <- renderInfoBox({
     stats <- dashboard_stats()
     resolved_count <- sum(stats$status$count[stats$status$status == "Resolved"], na.rm = TRUE)
@@ -1871,7 +1979,7 @@ server <- function(input, output, session) {
       color = "green"
     )
   })
-
+  
   output$closed_cases <- renderInfoBox({
     stats <- dashboard_stats()
     closed_count <- sum(stats$status$count[stats$status$status == "Closed"], na.rm = TRUE)
@@ -1882,7 +1990,7 @@ server <- function(input, output, session) {
       color = "black"
     )
   })
-
+  
   output$overdue_cases_kpi <- renderInfoBox({
     sla <- tryCatch({
       get_sla_overview(con())
@@ -1897,16 +2005,16 @@ server <- function(input, output, session) {
       color = "maroon"
     )
   })
-
+  
   output$auto_refresh_status <- renderText({
     auto_refresh_timer()
     paste("Auto-refreshes every 5 min | Last:", format(Sys.time(), "%H:%M:%S"))
   })
-
+  
   observeEvent(input$manual_refresh_dashboard, {
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
   })
-
+  
   # Performance metrics table (existing)
   output$performance_metrics <- renderTable({
     stats <- dashboard_stats()
@@ -2004,7 +2112,7 @@ server <- function(input, output, session) {
     forced_region <- user_region_id()
     fetch_tickets(con(), region_id = forced_region, limit = 10)
   })
-
+  
   my_cases_data <- reactive({
     input$refresh_my_cases
     status_val <- if(is.null(input$my_status_filter) || input$my_status_filter == "All") {
@@ -2017,7 +2125,7 @@ server <- function(input, output, session) {
     region_filter <- if (!is.null(forced_region)) forced_region else input$my_region_filter
     fetch_tickets(con(), region_id = region_filter, status_filter = status_val)
   })
-
+  
   all_cases_data <- reactive({
     input$refresh_all_cases
     status_val <- if(is.null(input$all_status_filter) || input$all_status_filter == "All") {
@@ -2037,16 +2145,16 @@ server <- function(input, output, session) {
     }
     date_from_val <- if(is.null(input$all_date_from) || is.na(input$all_date_from)) NULL else input$all_date_from
     date_to_val <- if(is.null(input$all_date_to) || is.na(input$all_date_to)) NULL else input$all_date_to
-
+    
     # Enforce region restriction: regional users always filtered to their region
     forced_region <- user_region_id()
     region_filter <- if (!is.null(forced_region)) forced_region else input$all_region_filter
-
+    
     fetch_tickets(con(), region_id = region_filter, status_filter = status_val,
                   category_id = cat_val, search_text = search_val,
                   date_from = date_from_val, date_to = date_to_val)
   })
-
+  
   # Clear All Filters handler
   observeEvent(input$clear_all_filters, {
     updateTextInput(session, "all_search_text", value = "")
@@ -2056,7 +2164,7 @@ server <- function(input, output, session) {
     updateDateInput(session, "all_date_from", value = NA)
     updateDateInput(session, "all_date_to", value = NA)
   })
-
+  
   # CSV Export for All Cases
   output$export_cases_csv <- downloadHandler(
     filename = function() paste0("cases_export_", Sys.Date(), ".csv"),
@@ -2161,7 +2269,7 @@ server <- function(input, output, session) {
       showNotification("Please enter at least 3 characters of the case code", type = "warning")
       return()
     }
-
+    
     tryCatch({
       result <- dbGetQuery(con(), "SELECT ticket_id FROM tickets WHERE case_code LIKE ? LIMIT 1",
                            params = list(paste0("%", search_code, "%")))
@@ -2176,7 +2284,7 @@ server <- function(input, output, session) {
       showNotification(paste("Search error:", e$message), type = "error")
     })
   })
-
+  
   # Case Details Modal Logic
   observeEvent(input$view_case_id, {
     if (!is.null(input$view_case_id)) {
@@ -2397,7 +2505,7 @@ server <- function(input, output, session) {
               actionButton("cancel_add_note", "Cancel", class = "btn btn-default", style = "margin-left: 10px;")
           )
       ),
-
+      
       # Resolve with Satisfaction Rating Section
       div(id = "resolveRatingSection", style = "display: none; margin-top: 20px; padding: 20px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;",
           h4("Resolve Case with Satisfaction Rating", style = "color: #16a085; margin-bottom: 15px;"),
@@ -2420,7 +2528,7 @@ server <- function(input, output, session) {
               actionButton("cancel_resolve_rating", "Cancel", class = "btn btn-default", style = "margin-left: 10px;")
           )
       ),
-
+      
       # Reopen Case Section
       div(id = "reopenCaseSection", style = "display: none; margin-top: 20px; padding: 20px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca;",
           h4("Reopen Case", style = "color: #dc2626; margin-bottom: 15px;"),
@@ -2447,7 +2555,7 @@ server <- function(input, output, session) {
   current_user_id <- reactive({
     if (isTRUE(rv$logged_in) && !is.null(rv$user)) rv$user$user_id else 1
   })
-
+  
   observeEvent(input$start_progress_btn, {
     if (!is.null(selected_case_id())) {
       uid <- current_user_id()
@@ -2530,7 +2638,7 @@ server <- function(input, output, session) {
   observeEvent(input$resolve_with_rating_btn, {
     runjs("$('#resolveRatingSection').show();")
   })
-
+  
   observeEvent(input$confirm_resolve_rating, {
     if (is.null(input$resolution_notes) || nchar(trimws(input$resolution_notes)) < 5) {
       showNotification("Resolution notes must be at least 5 characters", type = "warning")
@@ -2554,7 +2662,7 @@ server <- function(input, output, session) {
         }, error = function(e) {
           showNotification(paste("Resolved but failed to save rating:", e$message), type = "warning")
         })
-
+        
         tryCatch({ log_activity(pool, uid, "Resolve Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#resolveRatingSection').hide();")
         runjs("$('#caseDetailsModal').modal('hide');")
@@ -2566,18 +2674,18 @@ server <- function(input, output, session) {
       }
     }
   })
-
+  
   observeEvent(input$cancel_resolve_rating, {
     runjs("$('#resolveRatingSection').hide();")
     updateTextAreaInput(session, "resolution_notes", value = "")
     updateTextAreaInput(session, "satisfaction_feedback", value = "")
   })
-
+  
   # Reopen case handlers
   observeEvent(input$reopen_case_btn, {
     runjs("$('#reopenCaseSection').show();")
   })
-
+  
   observeEvent(input$confirm_reopen_case, {
     if (is.null(input$reopen_reason) || nchar(trimws(input$reopen_reason)) < 5) {
       showNotification("Reopen reason must be at least 5 characters", type = "warning")
@@ -2596,7 +2704,7 @@ server <- function(input, output, session) {
         }, error = function(e) {
           showNotification(paste("Reopened but failed to clear timestamps:", e$message), type = "warning")
         })
-
+        
         tryCatch({ log_activity(pool, uid, "Reopen Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#reopenCaseSection').hide();")
         runjs("$('#caseDetailsModal').modal('hide');")
@@ -2607,12 +2715,12 @@ server <- function(input, output, session) {
       }
     }
   })
-
+  
   observeEvent(input$cancel_reopen_case, {
     runjs("$('#reopenCaseSection').hide();")
     updateTextAreaInput(session, "reopen_reason", value = "")
   })
-
+  
   # Close case details modal
   observeEvent(input$closeCaseDetails, {
     runjs("$('#caseDetailsModal').modal('hide');")
@@ -2909,3 +3017,4 @@ server <- function(input, output, session) {
 # Run the application
 
 shinyApp(ui = ui, server = server)
+
