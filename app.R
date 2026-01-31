@@ -1015,7 +1015,7 @@ ui <- tagList(
             )
           ),
 
-          # Hidden sidebar with menu for tab switching
+          # Hidden sidebar with menu for tab switching (clean menu)
           dashboardSidebar(
             collapsed = TRUE,
             disable = FALSE,
@@ -1024,9 +1024,6 @@ ui <- tagList(
               menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
               menuItem("New Case", tabName = "new_case", icon = icon("plus")),
               menuItem("All Cases", tabName = "all_cases", icon = icon("list-alt")),
-              menuItem("Escalated Cases", tabName = "escalated_cases", icon = icon("exclamation-triangle")),
-              menuItem("Follow-ups", tabName = "follow_ups", icon = icon("calendar-check")),
-              menuItem("Templates", tabName = "templates", icon = icon("file-alt")),
               menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
             )
           )
@@ -1729,7 +1726,7 @@ ui <- tagList(
                       box(
                         title = "My Cases", status = "primary", solidHeader = TRUE,
                         width = 12,
-                        
+
                         fluidRow(
                           column(4,
                                  selectInput("my_status_filter", "Status Filter",
@@ -1743,10 +1740,147 @@ ui <- tagList(
                                               style = "margin-top: 25px;")
                           )
                         ),
-                        
+
                         withSpinner(DT::dataTableOutput("my_cases_table"))
                       )
                     )
+                  ),
+
+                  # Follow-ups Tab
+                  tabPanel(
+                    title = "Follow-ups",
+                    icon = icon("calendar-check"),
+                    br(),
+                    # Summary stats row
+                    fluidRow(
+                      valueBoxOutput("followup_overdue_box", width = 3),
+                      valueBoxOutput("followup_today_box", width = 3),
+                      valueBoxOutput("followup_week_box", width = 3),
+                      valueBoxOutput("followup_total_box", width = 3)
+                    ),
+
+                    fluidRow(
+                      # Pending Follow-ups
+                      box(
+                        title = "Pending Follow-ups", status = "warning", solidHeader = TRUE,
+                        width = 8,
+                        fluidRow(
+                          column(4,
+                            selectInput("followup_urgency_filter", "Filter by Urgency",
+                                        choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
+                          ),
+                          column(4,
+                            uiOutput("followup_region_filter_ui")
+                          ),
+                          column(4,
+                            actionButton("refresh_followups", "Refresh", class = "btn-warning",
+                                         style = "margin-top: 25px;", icon = icon("sync"))
+                          )
+                        ),
+                        hr(),
+                        withSpinner(DT::dataTableOutput("pending_followups_table"))
+                      ),
+
+                      # Schedule New Follow-up
+                      box(
+                        title = "Schedule Follow-up", status = "info", solidHeader = TRUE,
+                        width = 4,
+                        textInput("followup_case_search", "Case Code or Teacher Name",
+                                  placeholder = "Enter to search..."),
+                        dateInput("followup_date", "Follow-up Date", value = Sys.Date() + 3),
+                        textAreaInput("followup_notes", "Notes",
+                                      placeholder = "What needs to be followed up...",
+                                      height = "80px"),
+                        actionButton("schedule_followup", "Schedule Follow-up",
+                                     class = "btn-info btn-block",
+                                     icon = icon("calendar-plus"))
+                      )
+                    )
+                  ),
+
+                  # Response Guide Tab (Call Scripts)
+                  tabPanel(
+                    title = "Response Guide",
+                    icon = icon("comments"),
+                    br(),
+                    fluidRow(
+                      # Quick Responses Column
+                      box(
+                        title = "Quick Responses", status = "success", solidHeader = TRUE,
+                        width = 4,
+                        p("Click to copy common phrases:", style = "color: #6b7280; font-size: 13px;"),
+
+                        h5("Acknowledgements", style = "margin-top: 15px; color: #1e3a8a;"),
+                        actionButton("qr_ack_received", "Case Received", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
+                        actionButton("qr_ack_escalated", "Case Escalated", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
+                        actionButton("qr_ack_processing", "Being Processed", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
+
+                        h5("Status Updates", style = "margin-top: 15px; color: #1e3a8a;"),
+                        actionButton("qr_status_pending", "Pending Info", class = "btn-sm btn-outline-warning", style = "margin: 2px;"),
+                        actionButton("qr_status_followup", "Follow-up Set", class = "btn-sm btn-outline-warning", style = "margin: 2px;"),
+                        actionButton("qr_status_resolved", "Case Resolved", class = "btn-sm btn-outline-success", style = "margin: 2px;"),
+
+                        h5("Professional Phrases", style = "margin-top: 15px; color: #1e3a8a;"),
+                        actionButton("qr_phrase_understand", "I understand...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
+                        actionButton("qr_phrase_patience", "Thank you for patience...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
+                        actionButton("qr_phrase_assist", "Let me assist...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
+
+                        h5("Closings", style = "margin-top: 15px; color: #1e3a8a;"),
+                        actionButton("qr_close_help", "Anything else?", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
+                        actionButton("qr_close_contact", "Feel free to contact...", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
+                        actionButton("qr_close_reference", "Your reference number...", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
+
+                        hr(),
+                        h5("Copied Text:"),
+                        verbatimTextOutput("quick_response_text", placeholder = TRUE)
+                      ),
+
+                      # Response Templates Column
+                      box(
+                        title = "Response Templates", status = "primary", solidHeader = TRUE,
+                        width = 8,
+                        fluidRow(
+                          column(4,
+                            selectInput("template_category_filter", "Category",
+                                        choices = c("All" = "", "Payroll", "CPD/Licensing", "ICT", "Transfer",
+                                                    "Welfare", "General", "Escalation"))
+                          ),
+                          column(6,
+                            textInput("template_search", "Search Templates",
+                                      placeholder = "Search by name or content...")
+                          ),
+                          column(2,
+                            actionButton("refresh_templates", "Refresh", class = "btn-primary",
+                                         style = "margin-top: 25px;", icon = icon("sync"))
+                          )
+                        ),
+                        hr(),
+                        fluidRow(
+                          column(5,
+                            h5("Available Templates"),
+                            div(style = "max-height: 350px; overflow-y: auto;",
+                              uiOutput("templates_list")
+                            )
+                          ),
+                          column(7,
+                            h5("Preview"),
+                            wellPanel(style = "min-height: 200px; background: #f8fafc;",
+                              uiOutput("template_preview")
+                            ),
+                            actionButton("use_template", "Copy Template",
+                                         class = "btn-primary", icon = icon("copy"))
+                          )
+                        )
+                      )
+                    )
+                  ),
+
+                  # Escalated Cases Tab (Only for National PRO Office)
+                  tabPanel(
+                    title = uiOutput("escalated_tab_title"),
+                    value = "escalated_panel",
+                    br(),
+                    uiOutput("escalated_cases_panel")
                   )
                 )
               ),
@@ -1890,362 +2024,7 @@ ui <- tagList(
                 )
               ),
 
-              # ========================================
-              # ESCALATED CASES TAB
-              # ========================================
-              tabItem(
-                tabName = "escalated_cases",
-                fluidRow(
-                  box(
-                    title = tags$span(icon("exclamation-triangle"), " Escalated Cases - National Review Queue"),
-                    status = "danger", solidHeader = TRUE,
-                    width = 12,
-
-                    # Summary boxes
-                    fluidRow(
-                      column(3,
-                        valueBox(
-                          value = textOutput("escalated_total_count", inline = TRUE),
-                          subtitle = "Total Escalated",
-                          icon = icon("exclamation-circle"),
-                          color = "red",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("escalated_pending_count", inline = TRUE),
-                          subtitle = "Pending Review",
-                          icon = icon("clock"),
-                          color = "yellow",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("escalated_today_count", inline = TRUE),
-                          subtitle = "Escalated Today",
-                          icon = icon("calendar-day"),
-                          color = "orange",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("escalated_critical_count", inline = TRUE),
-                          subtitle = "Critical (Urgent/High)",
-                          icon = icon("fire"),
-                          color = "maroon",
-                          width = 12
-                        )
-                      )
-                    ),
-
-                    hr(),
-
-                    # Filters
-                    fluidRow(
-                      column(3,
-                        selectInput("esc_region_filter", "Filter by Region",
-                                    choices = c("All Regions" = ""))
-                      ),
-                      column(3,
-                        selectInput("esc_priority_filter", "Filter by Priority",
-                                    choices = c("All" = "", "Urgent", "High", "Medium", "Low"))
-                      ),
-                      column(3,
-                        selectInput("esc_category_filter", "Filter by Category",
-                                    choices = c("All Categories" = ""))
-                      ),
-                      column(3,
-                        actionButton("refresh_escalated", "Refresh", class = "btn-danger",
-                                     style = "margin-top: 25px; width: 100%;",
-                                     icon = icon("sync"))
-                      )
-                    ),
-
-                    hr(),
-
-                    # Escalated cases table
-                    withSpinner(DT::dataTableOutput("escalated_cases_table")),
-
-                    hr(),
-
-                    # Action buttons for selected case
-                    div(id = "escalated_case_actions", style = "margin-top: 15px;",
-                      h5("Quick Actions for Selected Case:"),
-                      actionButton("esc_take_ownership", "Take Ownership", class = "btn-primary", icon = icon("hand-paper")),
-                      actionButton("esc_add_note", "Add Note", class = "btn-info", icon = icon("sticky-note")),
-                      actionButton("esc_resolve", "Resolve Case", class = "btn-success", icon = icon("check")),
-                      actionButton("esc_send_back", "Send Back to Region", class = "btn-warning", icon = icon("undo")),
-                      actionButton("esc_view_details", "View Full Details", class = "btn-default", icon = icon("eye"))
-                    )
-                  )
-                ),
-
-                # Email notification info
-                fluidRow(
-                  box(
-                    title = "Escalation Notifications",
-                    status = "info", solidHeader = TRUE,
-                    width = 12, collapsible = TRUE, collapsed = TRUE,
-                    p("All escalated cases are automatically notified to:"),
-                    tags$ul(
-                      tags$li(tags$strong("enquiry.nationalprooffice@gmail.com"), " - National PRO Office")
-                    ),
-                    p("Escalations include: Case details, teacher information, escalation reason, and urgency level.")
-                  )
-                )
-              ),
-
-              # ========================================
-              # FOLLOW-UPS TAB
-              # ========================================
-              tabItem(
-                tabName = "follow_ups",
-                fluidRow(
-                  box(
-                    title = tags$span(icon("calendar-check"), " Follow-up Scheduling & Reminders"),
-                    status = "primary", solidHeader = TRUE,
-                    width = 12,
-
-                    # Summary stats
-                    fluidRow(
-                      column(3,
-                        valueBox(
-                          value = textOutput("followup_overdue_count", inline = TRUE),
-                          subtitle = "Overdue",
-                          icon = icon("exclamation-triangle"),
-                          color = "red",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("followup_today_count", inline = TRUE),
-                          subtitle = "Due Today",
-                          icon = icon("calendar-day"),
-                          color = "yellow",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("followup_week_count", inline = TRUE),
-                          subtitle = "Due This Week",
-                          icon = icon("calendar-week"),
-                          color = "blue",
-                          width = 12
-                        )
-                      ),
-                      column(3,
-                        valueBox(
-                          value = textOutput("followup_total_pending", inline = TRUE),
-                          subtitle = "Total Pending",
-                          icon = icon("clock"),
-                          color = "purple",
-                          width = 12
-                        )
-                      )
-                    ),
-
-                    hr(),
-
-                    tabsetPanel(
-                      # Pending Follow-ups
-                      tabPanel(
-                        title = "Pending Follow-ups",
-                        br(),
-                        fluidRow(
-                          column(3,
-                            selectInput("followup_urgency_filter", "Filter by Urgency",
-                                        choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
-                          ),
-                          column(3,
-                            selectInput("followup_region_filter", "Filter by Region",
-                                        choices = c("All Regions" = ""))
-                          ),
-                          column(3,
-                            dateRangeInput("followup_date_range", "Date Range",
-                                           start = Sys.Date() - 7, end = Sys.Date() + 30)
-                          ),
-                          column(3,
-                            actionButton("refresh_followups", "Refresh", class = "btn-primary",
-                                         style = "margin-top: 25px; width: 100%;",
-                                         icon = icon("sync"))
-                          )
-                        ),
-                        hr(),
-                        withSpinner(DT::dataTableOutput("pending_followups_table"))
-                      ),
-
-                      # Schedule New Follow-up
-                      tabPanel(
-                        title = "Schedule Follow-up",
-                        br(),
-                        fluidRow(
-                          column(6,
-                            textInput("followup_case_search", "Search Case (Code or Name)",
-                                      placeholder = "Enter case code or teacher name..."),
-                            uiOutput("followup_case_select_ui"),
-                            dateInput("followup_date", "Follow-up Date", value = Sys.Date() + 3),
-                            textAreaInput("followup_notes", "Notes",
-                                          placeholder = "Describe what needs to be followed up...",
-                                          height = "100px")
-                          ),
-                          column(6,
-                            h5("Selected Case Details:"),
-                            uiOutput("followup_case_preview"),
-                            hr(),
-                            actionButton("schedule_followup", "Schedule Follow-up",
-                                         class = "btn-primary btn-lg",
-                                         icon = icon("calendar-plus"))
-                          )
-                        )
-                      ),
-
-                      # Completed Follow-ups
-                      tabPanel(
-                        title = "Completed",
-                        br(),
-                        withSpinner(DT::dataTableOutput("completed_followups_table"))
-                      )
-                    )
-                  )
-                )
-              ),
-
-              # ========================================
-              # CASE TEMPLATES TAB
-              # ========================================
-              tabItem(
-                tabName = "templates",
-                fluidRow(
-                  box(
-                    title = tags$span(icon("file-alt"), " Case Response Templates"),
-                    status = "primary", solidHeader = TRUE,
-                    width = 12,
-
-                    tabsetPanel(
-                      # Browse Templates
-                      tabPanel(
-                        title = "Browse Templates",
-                        br(),
-                        fluidRow(
-                          column(3,
-                            selectInput("template_category_filter", "Filter by Category",
-                                        choices = c("All" = "", "Payroll", "CPD/Licensing", "ICT", "Transfer",
-                                                    "Welfare", "General", "Escalation"))
-                          ),
-                          column(6,
-                            textInput("template_search", "Search Templates",
-                                      placeholder = "Search by name or content...")
-                          ),
-                          column(3,
-                            actionButton("refresh_templates", "Refresh", class = "btn-primary",
-                                         style = "margin-top: 25px;",
-                                         icon = icon("sync"))
-                          )
-                        ),
-                        hr(),
-                        fluidRow(
-                          column(5,
-                            h5("Available Templates"),
-                            div(style = "max-height: 500px; overflow-y: auto;",
-                              uiOutput("templates_list")
-                            )
-                          ),
-                          column(7,
-                            h5("Template Preview"),
-                            wellPanel(
-                              uiOutput("template_preview")
-                            ),
-                            hr(),
-                            fluidRow(
-                              column(6,
-                                actionButton("use_template", "Use This Template",
-                                             class = "btn-primary btn-lg",
-                                             icon = icon("copy"))
-                              ),
-                              column(6,
-                                actionButton("apply_to_case", "Apply to Current Case",
-                                             class = "btn-success btn-lg",
-                                             icon = icon("paper-plane"))
-                              )
-                            )
-                          )
-                        )
-                      ),
-
-                      # Quick Responses
-                      tabPanel(
-                        title = "Quick Responses",
-                        br(),
-                        h5("Frequently Used Quick Responses"),
-                        p("Click to copy to clipboard:"),
-                        fluidRow(
-                          column(6,
-                            h6("Acknowledgements:"),
-                            actionButton("qr_ack_received", "Case Received", class = "btn-sm btn-default"),
-                            actionButton("qr_ack_escalated", "Case Escalated", class = "btn-sm btn-default"),
-                            actionButton("qr_ack_processing", "Being Processed", class = "btn-sm btn-default"),
-                            br(), br(),
-                            h6("Status Updates:"),
-                            actionButton("qr_status_pending", "Pending Information", class = "btn-sm btn-default"),
-                            actionButton("qr_status_followup", "Follow-up Scheduled", class = "btn-sm btn-default"),
-                            actionButton("qr_status_resolved", "Case Resolved", class = "btn-sm btn-default")
-                          ),
-                          column(6,
-                            h6("Common Phrases:"),
-                            actionButton("qr_phrase_understand", "\"I understand your concern...\"", class = "btn-sm btn-default"),
-                            actionButton("qr_phrase_patience", "\"Thank you for your patience...\"", class = "btn-sm btn-default"),
-                            actionButton("qr_phrase_assist", "\"Let me assist you with...\"", class = "btn-sm btn-default"),
-                            br(), br(),
-                            h6("Closings:"),
-                            actionButton("qr_close_help", "\"Is there anything else...\"", class = "btn-sm btn-default"),
-                            actionButton("qr_close_contact", "\"Please feel free to contact...\"", class = "btn-sm btn-default"),
-                            actionButton("qr_close_reference", "\"Your reference number is...\"", class = "btn-sm btn-default")
-                          )
-                        ),
-                        hr(),
-                        h5("Copied Text:"),
-                        verbatimTextOutput("quick_response_text")
-                      ),
-
-                      # Manage Templates (Admin only)
-                      tabPanel(
-                        title = "Manage Templates",
-                        br(),
-                        fluidRow(
-                          column(6,
-                            h5("Add New Template"),
-                            textInput("new_template_name", "Template Name"),
-                            selectInput("new_template_category", "Category",
-                                        choices = c("Payroll", "CPD/Licensing", "ICT", "Transfer",
-                                                    "Welfare", "General", "Escalation")),
-                            textInput("new_template_subject", "Subject Line"),
-                            textAreaInput("new_template_body", "Template Body", height = "200px",
-                                          placeholder = "Use {case_code}, {teacher_name}, {region}, etc. for placeholders"),
-                            actionButton("save_new_template", "Save Template", class = "btn-primary",
-                                         icon = icon("save"))
-                          ),
-                          column(6,
-                            h5("Template Management"),
-                            withSpinner(DT::dataTableOutput("admin_templates_table")),
-                            br(),
-                            actionButton("delete_template", "Delete Selected", class = "btn-danger",
-                                         icon = icon("trash")),
-                            actionButton("edit_template", "Edit Selected", class = "btn-warning",
-                                         icon = icon("edit"))
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-              ),
-
-              # Analytics Tab (unchanged from original)
+              # Analytics Tab
               tabItem(
                 tabName = "analytics",
                 
@@ -2599,7 +2378,7 @@ server <- function(input, output, session) {
     if (is.null(current)) current <- "dashboard"
 
     if (isTRUE(rv$logged_in)) {
-      # Logged-in users see all menu items including new tabs
+      # Clean navigation - Dashboard, New Case, All Cases, Analytics only
       div(class = "header-nav-menu",
           actionButton("nav_dashboard",
                        tagList(icon("dashboard"), "Dashboard"),
@@ -2610,16 +2389,6 @@ server <- function(input, output, session) {
           actionButton("nav_all_cases",
                        tagList(icon("list-alt"), "All Cases"),
                        class = paste("nav-btn", if(current == "all_cases") "active" else "")),
-          actionButton("nav_escalated",
-                       tagList(icon("exclamation-triangle"), "Escalated"),
-                       class = paste("nav-btn", if(current == "escalated_cases") "active" else ""),
-                       style = if(current != "escalated_cases") "background: rgba(220, 38, 38, 0.3) !important;" else ""),
-          actionButton("nav_followups",
-                       tagList(icon("calendar-check"), "Follow-ups"),
-                       class = paste("nav-btn", if(current == "follow_ups") "active" else "")),
-          actionButton("nav_templates",
-                       tagList(icon("file-alt"), "Templates"),
-                       class = paste("nav-btn", if(current == "templates") "active" else "")),
           actionButton("nav_analytics",
                        tagList(icon("chart-bar"), "Analytics"),
                        class = paste("nav-btn", if(current == "analytics") "active" else ""))
@@ -2653,21 +2422,6 @@ server <- function(input, output, session) {
   observeEvent(input$nav_analytics, {
     updateTextInput(session, "current_tab", value = "analytics")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "analytics")
-  })
-
-  observeEvent(input$nav_escalated, {
-    updateTextInput(session, "current_tab", value = "escalated_cases")
-    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "escalated_cases")
-  })
-
-  observeEvent(input$nav_followups, {
-    updateTextInput(session, "current_tab", value = "follow_ups")
-    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "follow_ups")
-  })
-
-  observeEvent(input$nav_templates, {
-    updateTextInput(session, "current_tab", value = "templates")
-    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "templates")
   })
 
   # Sync current_tab when sidebar_menu changes (for any external changes)
@@ -4055,6 +3809,100 @@ server <- function(input, output, session) {
   # ESCALATED CASES TAB HANDLERS
   # ========================================
 
+  # Check if user is National PRO Office
+  is_national_pro <- reactive({
+    if (!isTRUE(rv$logged_in) || is.null(rv$user)) return(FALSE)
+    rv$user$email == "enquiry.nationalprooffice@gmail.com" || rv$user$role == "National Admin"
+  })
+
+  # Escalated tab title - only shows for National PRO Office
+  output$escalated_tab_title <- renderUI({
+    if (is_national_pro()) {
+      tagList(icon("exclamation-triangle"), " Escalated Cases")
+    } else {
+      NULL
+    }
+  })
+
+  # Escalated cases panel - full content for National PRO Office, message for others
+  output$escalated_cases_panel <- renderUI({
+    if (!is_national_pro()) {
+      return(
+        div(style = "text-align: center; padding: 50px;",
+          icon("lock", style = "font-size: 48px; color: #6b7280;"),
+          h4("Access Restricted", style = "color: #374151; margin-top: 20px;"),
+          p("Escalated cases are managed by the National PRO Office.", style = "color: #6b7280;"),
+          p("If you need to view escalated cases, please contact: ", tags$strong("enquiry.nationalprooffice@gmail.com"))
+        )
+      )
+    }
+
+    # Full escalated cases panel for National PRO Office
+    tagList(
+      # Summary stats
+      fluidRow(
+        valueBoxOutput("esc_total_box", width = 3),
+        valueBoxOutput("esc_pending_box", width = 3),
+        valueBoxOutput("esc_today_box", width = 3),
+        valueBoxOutput("esc_critical_box", width = 3)
+      ),
+
+      fluidRow(
+        box(
+          title = "Escalated Cases - National Review Queue",
+          status = "danger", solidHeader = TRUE,
+          width = 12,
+
+          fluidRow(
+            column(3,
+              selectInput("esc_region_filter", "Region",
+                          choices = c("All Regions" = ""))
+            ),
+            column(3,
+              selectInput("esc_priority_filter", "Priority",
+                          choices = c("All" = "", "Urgent", "High", "Medium", "Low"))
+            ),
+            column(3,
+              selectInput("esc_category_filter", "Category",
+                          choices = c("All Categories" = ""))
+            ),
+            column(3,
+              actionButton("refresh_escalated", "Refresh", class = "btn-danger",
+                           style = "margin-top: 25px; width: 100%;", icon = icon("sync"))
+            )
+          ),
+
+          hr(),
+          withSpinner(DT::dataTableOutput("escalated_cases_table")),
+
+          hr(),
+          p(tags$small("All escalations are sent to enquiry.nationalprooffice@gmail.com", style = "color: #6b7280;"))
+        )
+      )
+    )
+  })
+
+  # Escalated cases valueBox outputs
+  output$esc_total_box <- renderValueBox({
+    valueBox(nrow(escalated_cases_data()), "Total Escalated", icon = icon("exclamation-circle"), color = "red")
+  })
+
+  output$esc_pending_box <- renderValueBox({
+    valueBox(sum(escalated_cases_data()$status == "Escalated", na.rm = TRUE), "Pending Review", icon = icon("clock"), color = "yellow")
+  })
+
+  output$esc_today_box <- renderValueBox({
+    data <- escalated_cases_data()
+    count <- if (nrow(data) == 0) 0 else sum(as.Date(data$escalated_at) == Sys.Date(), na.rm = TRUE)
+    valueBox(count, "Today", icon = icon("calendar-day"), color = "orange")
+  })
+
+  output$esc_critical_box <- renderValueBox({
+    data <- escalated_cases_data()
+    count <- if (nrow(data) == 0) 0 else sum(data$priority %in% c("High", "Urgent"), na.rm = TRUE)
+    valueBox(count, "Critical", icon = icon("fire"), color = "maroon")
+  })
+
   # Reactive data for escalated cases
   escalated_cases_data <- reactive({
     input$refresh_escalated  # Dependency for refresh
@@ -4198,7 +4046,7 @@ server <- function(input, output, session) {
     })
   })
 
-  # Follow-up counts
+  # Follow-up counts (text outputs)
   output$followup_overdue_count <- renderText({
     data <- follow_ups_data()
     if (nrow(data) == 0) return("0")
@@ -4219,6 +4067,36 @@ server <- function(input, output, session) {
 
   output$followup_total_pending <- renderText({
     nrow(follow_ups_data())
+  })
+
+  # Follow-up valueBox outputs (for Dashboard tab)
+  output$followup_overdue_box <- renderValueBox({
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Overdue", na.rm = TRUE)
+    valueBox(count, "Overdue", icon = icon("exclamation-triangle"), color = "red")
+  })
+
+  output$followup_today_box <- renderValueBox({
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Due Today", na.rm = TRUE)
+    valueBox(count, "Due Today", icon = icon("calendar-day"), color = "yellow")
+  })
+
+  output$followup_week_box <- renderValueBox({
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
+    valueBox(count, "This Week", icon = icon("calendar-week"), color = "blue")
+  })
+
+  output$followup_total_box <- renderValueBox({
+    valueBox(nrow(follow_ups_data()), "Total Pending", icon = icon("clock"), color = "purple")
+  })
+
+  # Follow-up region filter UI
+  output$followup_region_filter_ui <- renderUI({
+    regions <- get_regions(con())
+    selectInput("followup_region_filter", "Region",
+                choices = c("All Regions" = "", regions$region_name))
   })
 
   # Pending follow-ups table
