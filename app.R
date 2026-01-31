@@ -1024,6 +1024,9 @@ ui <- tagList(
               menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
               menuItem("New Case", tabName = "new_case", icon = icon("plus")),
               menuItem("All Cases", tabName = "all_cases", icon = icon("list-alt")),
+              menuItem("Escalated Cases", tabName = "escalated_cases", icon = icon("exclamation-triangle")),
+              menuItem("Follow-ups", tabName = "follow_ups", icon = icon("calendar-check")),
+              menuItem("Templates", tabName = "templates", icon = icon("file-alt")),
               menuItem("Analytics", tabName = "analytics", icon = icon("chart-bar"))
             )
           )
@@ -1299,6 +1302,147 @@ ui <- tagList(
               .status-resolved { background-color: #16a085; color: white; }
               .status-closed { background-color: #6b7280; color: white; }
 
+              /* Escalation Popup Styles */
+              .escalation-popup {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+                color: white;
+                padding: 30px;
+                border-radius: 12px;
+                box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+                z-index: 10000;
+                min-width: 400px;
+                max-width: 600px;
+                animation: escalationPulse 0.5s ease-out;
+              }
+
+              @keyframes escalationPulse {
+                0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+                50% { transform: translate(-50%, -50%) scale(1.05); }
+                100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+              }
+
+              .escalation-popup h3 {
+                margin-top: 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+              }
+
+              .escalation-popup .close-btn {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                cursor: pointer;
+              }
+
+              .escalation-popup .close-btn:hover {
+                background: rgba(255,255,255,0.3);
+              }
+
+              .escalation-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 9999;
+              }
+
+              /* Bulk Operations Styles */
+              .bulk-actions-bar {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%);
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                flex-wrap: wrap;
+              }
+
+              .bulk-actions-bar .selected-count {
+                color: white;
+                font-weight: 600;
+                font-size: 14px;
+              }
+
+              .bulk-actions-bar .btn {
+                background: rgba(255,255,255,0.2);
+                border: 1px solid rgba(255,255,255,0.3);
+                color: white;
+              }
+
+              .bulk-actions-bar .btn:hover {
+                background: rgba(255,255,255,0.3);
+              }
+
+              /* Follow-up Calendar Styles */
+              .follow-up-card {
+                background: white;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-left: 4px solid #3b82f6;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+
+              .follow-up-card.overdue {
+                border-left-color: #dc2626;
+                background: #fef2f2;
+              }
+
+              .follow-up-card.due-today {
+                border-left-color: #f59e0b;
+                background: #fffbeb;
+              }
+
+              /* Template Card Styles */
+              .template-card {
+                background: white;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border: 1px solid #e5e7eb;
+                cursor: pointer;
+                transition: all 0.2s ease;
+              }
+
+              .template-card:hover {
+                border-color: #3b82f6;
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+              }
+
+              .template-card.selected {
+                border-color: #3b82f6;
+                background: #eff6ff;
+              }
+
+              .template-category-badge {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+              }
+
+              .template-category-payroll { background: #dbeafe; color: #1e40af; }
+              .template-category-welfare { background: #fee2e2; color: #991b1b; }
+              .template-category-transfer { background: #d1fae5; color: #065f46; }
+              .template-category-general { background: #e5e7eb; color: #374151; }
+              .template-category-escalation { background: #fef3c7; color: #92400e; }
+
               .sla-overdue { color: #dc2626; font-weight: bold; }
               .sla-due-soon { color: #ea580c; font-weight: bold; }
               .sla-on-track { color: #16a085; }
@@ -1429,7 +1573,101 @@ ui <- tagList(
                               )
                      )
             ),
-            
+
+            # Escalation Popup Modal (shows when case is escalated)
+            hidden(
+              tags$div(id = "escalationPopupOverlay", class = "escalation-overlay",
+                onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())"
+              )
+            ),
+            hidden(
+              tags$div(id = "escalationPopup", class = "escalation-popup",
+                tags$button(class = "close-btn", onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())",
+                            icon("times")),
+                tags$h3(icon("exclamation-triangle"), " Case Escalated!"),
+                uiOutput("escalation_popup_content"),
+                hr(),
+                tags$p("This case has been sent to the National PRO Office for review."),
+                tags$p(tags$strong("Email notification sent to:"), " enquiry.nationalprooffice@gmail.com"),
+                br(),
+                fluidRow(
+                  column(6,
+                    actionButton("view_escalated_case", "View Case Details", class = "btn btn-light", style = "width: 100%;")
+                  ),
+                  column(6,
+                    actionButton("go_to_escalated_tab", "Go to Escalated Cases", class = "btn btn-light", style = "width: 100%;")
+                  )
+                )
+              )
+            ),
+
+            # Bulk Status Update Modal
+            tags$div(id = "bulkStatusModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-header",
+                                                tags$h4(class = "modal-title", "Bulk Status Update")
+                                       ),
+                                       tags$div(class = "modal-body",
+                                                selectInput("bulk_new_status", "New Status",
+                                                            choices = c("New", "In Progress", "Waiting on Teacher", "Escalated", "Resolved", "Closed")),
+                                                textAreaInput("bulk_status_notes", "Notes (Optional)",
+                                                              placeholder = "Add notes for this bulk update...")
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("confirm_bulk_status", "Update All Selected", class = "btn btn-primary"),
+                                                tags$button(type = "button", class = "btn btn-default", `data-dismiss` = "modal", "Cancel")
+                                       )
+                              )
+                     )
+            ),
+
+            # Bulk Priority Change Modal
+            tags$div(id = "bulkPriorityModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-header",
+                                                tags$h4(class = "modal-title", "Bulk Priority Change")
+                                       ),
+                                       tags$div(class = "modal-body",
+                                                selectInput("bulk_new_priority", "New Priority",
+                                                            choices = c("Low", "Medium", "High", "Urgent"))
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("confirm_bulk_priority", "Update All Selected", class = "btn btn-primary"),
+                                                tags$button(type = "button", class = "btn btn-default", `data-dismiss` = "modal", "Cancel")
+                                       )
+                              )
+                     )
+            ),
+
+            # Escalation Reason Modal (for detailed escalation)
+            tags$div(id = "escalationReasonModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-header", style = "background: #dc2626; color: white;",
+                                                tags$h4(class = "modal-title", icon("exclamation-triangle"), " Escalate Case")
+                                       ),
+                                       tags$div(class = "modal-body",
+                                                tags$p("You are about to escalate this case to the National PRO Office."),
+                                                selectInput("escalation_level", "Escalation Level",
+                                                            choices = c("Level 1 - Immediate Supervisor" = "1",
+                                                                        "Level 2 - Directorate/Functional Lead" = "2",
+                                                                        "Level 3 - Executive/TMTC Review" = "3",
+                                                                        "Emergency - Immediate Action Required" = "emergency")),
+                                                textAreaInput("escalation_reason_text", "Escalation Reason *",
+                                                              placeholder = "Explain why this case needs escalation...",
+                                                              height = "100px"),
+                                                checkboxInput("notify_national_office", "Send email notification to National PRO Office", value = TRUE)
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("confirm_escalation_with_reason", "Escalate Now", class = "btn btn-danger"),
+                                                tags$button(type = "button", class = "btn btn-default", `data-dismiss` = "modal", "Cancel")
+                                       )
+                              )
+                     )
+            ),
+
             tabItems(
               # Dashboard Tab with sub-tabs
               tabItem(
@@ -1634,11 +1872,379 @@ ui <- tagList(
                     ),
                     
                     hr(),
+
+                    # Bulk Actions Bar (hidden by default)
+                    hidden(
+                      div(id = "bulk_actions_bar", class = "bulk-actions-bar",
+                        span(class = "selected-count", textOutput("bulk_selected_count", inline = TRUE)),
+                        actionButton("bulk_update_status", "Update Status", icon = icon("edit"), class = "btn-sm"),
+                        actionButton("bulk_change_priority", "Change Priority", icon = icon("flag"), class = "btn-sm"),
+                        actionButton("bulk_assign", "Assign", icon = icon("user-plus"), class = "btn-sm"),
+                        actionButton("bulk_escalate", "Escalate All", icon = icon("exclamation-triangle"), class = "btn-sm btn-danger"),
+                        actionButton("bulk_clear_selection", "Clear Selection", icon = icon("times"), class = "btn-sm")
+                      )
+                    ),
+
                     withSpinner(DT::dataTableOutput("all_cases_table"))
                   )
                 )
               ),
-              
+
+              # ========================================
+              # ESCALATED CASES TAB
+              # ========================================
+              tabItem(
+                tabName = "escalated_cases",
+                fluidRow(
+                  box(
+                    title = tags$span(icon("exclamation-triangle"), " Escalated Cases - National Review Queue"),
+                    status = "danger", solidHeader = TRUE,
+                    width = 12,
+
+                    # Summary boxes
+                    fluidRow(
+                      column(3,
+                        valueBox(
+                          value = textOutput("escalated_total_count", inline = TRUE),
+                          subtitle = "Total Escalated",
+                          icon = icon("exclamation-circle"),
+                          color = "red",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("escalated_pending_count", inline = TRUE),
+                          subtitle = "Pending Review",
+                          icon = icon("clock"),
+                          color = "yellow",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("escalated_today_count", inline = TRUE),
+                          subtitle = "Escalated Today",
+                          icon = icon("calendar-day"),
+                          color = "orange",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("escalated_critical_count", inline = TRUE),
+                          subtitle = "Critical (Urgent/High)",
+                          icon = icon("fire"),
+                          color = "maroon",
+                          width = 12
+                        )
+                      )
+                    ),
+
+                    hr(),
+
+                    # Filters
+                    fluidRow(
+                      column(3,
+                        selectInput("esc_region_filter", "Filter by Region",
+                                    choices = c("All Regions" = ""))
+                      ),
+                      column(3,
+                        selectInput("esc_priority_filter", "Filter by Priority",
+                                    choices = c("All" = "", "Urgent", "High", "Medium", "Low"))
+                      ),
+                      column(3,
+                        selectInput("esc_category_filter", "Filter by Category",
+                                    choices = c("All Categories" = ""))
+                      ),
+                      column(3,
+                        actionButton("refresh_escalated", "Refresh", class = "btn-danger",
+                                     style = "margin-top: 25px; width: 100%;",
+                                     icon = icon("sync"))
+                      )
+                    ),
+
+                    hr(),
+
+                    # Escalated cases table
+                    withSpinner(DT::dataTableOutput("escalated_cases_table")),
+
+                    hr(),
+
+                    # Action buttons for selected case
+                    div(id = "escalated_case_actions", style = "margin-top: 15px;",
+                      h5("Quick Actions for Selected Case:"),
+                      actionButton("esc_take_ownership", "Take Ownership", class = "btn-primary", icon = icon("hand-paper")),
+                      actionButton("esc_add_note", "Add Note", class = "btn-info", icon = icon("sticky-note")),
+                      actionButton("esc_resolve", "Resolve Case", class = "btn-success", icon = icon("check")),
+                      actionButton("esc_send_back", "Send Back to Region", class = "btn-warning", icon = icon("undo")),
+                      actionButton("esc_view_details", "View Full Details", class = "btn-default", icon = icon("eye"))
+                    )
+                  )
+                ),
+
+                # Email notification info
+                fluidRow(
+                  box(
+                    title = "Escalation Notifications",
+                    status = "info", solidHeader = TRUE,
+                    width = 12, collapsible = TRUE, collapsed = TRUE,
+                    p("All escalated cases are automatically notified to:"),
+                    tags$ul(
+                      tags$li(tags$strong("enquiry.nationalprooffice@gmail.com"), " - National PRO Office")
+                    ),
+                    p("Escalations include: Case details, teacher information, escalation reason, and urgency level.")
+                  )
+                )
+              ),
+
+              # ========================================
+              # FOLLOW-UPS TAB
+              # ========================================
+              tabItem(
+                tabName = "follow_ups",
+                fluidRow(
+                  box(
+                    title = tags$span(icon("calendar-check"), " Follow-up Scheduling & Reminders"),
+                    status = "primary", solidHeader = TRUE,
+                    width = 12,
+
+                    # Summary stats
+                    fluidRow(
+                      column(3,
+                        valueBox(
+                          value = textOutput("followup_overdue_count", inline = TRUE),
+                          subtitle = "Overdue",
+                          icon = icon("exclamation-triangle"),
+                          color = "red",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("followup_today_count", inline = TRUE),
+                          subtitle = "Due Today",
+                          icon = icon("calendar-day"),
+                          color = "yellow",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("followup_week_count", inline = TRUE),
+                          subtitle = "Due This Week",
+                          icon = icon("calendar-week"),
+                          color = "blue",
+                          width = 12
+                        )
+                      ),
+                      column(3,
+                        valueBox(
+                          value = textOutput("followup_total_pending", inline = TRUE),
+                          subtitle = "Total Pending",
+                          icon = icon("clock"),
+                          color = "purple",
+                          width = 12
+                        )
+                      )
+                    ),
+
+                    hr(),
+
+                    tabsetPanel(
+                      # Pending Follow-ups
+                      tabPanel(
+                        title = "Pending Follow-ups",
+                        br(),
+                        fluidRow(
+                          column(3,
+                            selectInput("followup_urgency_filter", "Filter by Urgency",
+                                        choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
+                          ),
+                          column(3,
+                            selectInput("followup_region_filter", "Filter by Region",
+                                        choices = c("All Regions" = ""))
+                          ),
+                          column(3,
+                            dateRangeInput("followup_date_range", "Date Range",
+                                           start = Sys.Date() - 7, end = Sys.Date() + 30)
+                          ),
+                          column(3,
+                            actionButton("refresh_followups", "Refresh", class = "btn-primary",
+                                         style = "margin-top: 25px; width: 100%;",
+                                         icon = icon("sync"))
+                          )
+                        ),
+                        hr(),
+                        withSpinner(DT::dataTableOutput("pending_followups_table"))
+                      ),
+
+                      # Schedule New Follow-up
+                      tabPanel(
+                        title = "Schedule Follow-up",
+                        br(),
+                        fluidRow(
+                          column(6,
+                            textInput("followup_case_search", "Search Case (Code or Name)",
+                                      placeholder = "Enter case code or teacher name..."),
+                            uiOutput("followup_case_select_ui"),
+                            dateInput("followup_date", "Follow-up Date", value = Sys.Date() + 3),
+                            textAreaInput("followup_notes", "Notes",
+                                          placeholder = "Describe what needs to be followed up...",
+                                          height = "100px")
+                          ),
+                          column(6,
+                            h5("Selected Case Details:"),
+                            uiOutput("followup_case_preview"),
+                            hr(),
+                            actionButton("schedule_followup", "Schedule Follow-up",
+                                         class = "btn-primary btn-lg",
+                                         icon = icon("calendar-plus"))
+                          )
+                        )
+                      ),
+
+                      # Completed Follow-ups
+                      tabPanel(
+                        title = "Completed",
+                        br(),
+                        withSpinner(DT::dataTableOutput("completed_followups_table"))
+                      )
+                    )
+                  )
+                )
+              ),
+
+              # ========================================
+              # CASE TEMPLATES TAB
+              # ========================================
+              tabItem(
+                tabName = "templates",
+                fluidRow(
+                  box(
+                    title = tags$span(icon("file-alt"), " Case Response Templates"),
+                    status = "primary", solidHeader = TRUE,
+                    width = 12,
+
+                    tabsetPanel(
+                      # Browse Templates
+                      tabPanel(
+                        title = "Browse Templates",
+                        br(),
+                        fluidRow(
+                          column(3,
+                            selectInput("template_category_filter", "Filter by Category",
+                                        choices = c("All" = "", "Payroll", "CPD/Licensing", "ICT", "Transfer",
+                                                    "Welfare", "General", "Escalation"))
+                          ),
+                          column(6,
+                            textInput("template_search", "Search Templates",
+                                      placeholder = "Search by name or content...")
+                          ),
+                          column(3,
+                            actionButton("refresh_templates", "Refresh", class = "btn-primary",
+                                         style = "margin-top: 25px;",
+                                         icon = icon("sync"))
+                          )
+                        ),
+                        hr(),
+                        fluidRow(
+                          column(5,
+                            h5("Available Templates"),
+                            div(style = "max-height: 500px; overflow-y: auto;",
+                              uiOutput("templates_list")
+                            )
+                          ),
+                          column(7,
+                            h5("Template Preview"),
+                            wellPanel(
+                              uiOutput("template_preview")
+                            ),
+                            hr(),
+                            fluidRow(
+                              column(6,
+                                actionButton("use_template", "Use This Template",
+                                             class = "btn-primary btn-lg",
+                                             icon = icon("copy"))
+                              ),
+                              column(6,
+                                actionButton("apply_to_case", "Apply to Current Case",
+                                             class = "btn-success btn-lg",
+                                             icon = icon("paper-plane"))
+                              )
+                            )
+                          )
+                        )
+                      ),
+
+                      # Quick Responses
+                      tabPanel(
+                        title = "Quick Responses",
+                        br(),
+                        h5("Frequently Used Quick Responses"),
+                        p("Click to copy to clipboard:"),
+                        fluidRow(
+                          column(6,
+                            h6("Acknowledgements:"),
+                            actionButton("qr_ack_received", "Case Received", class = "btn-sm btn-default"),
+                            actionButton("qr_ack_escalated", "Case Escalated", class = "btn-sm btn-default"),
+                            actionButton("qr_ack_processing", "Being Processed", class = "btn-sm btn-default"),
+                            br(), br(),
+                            h6("Status Updates:"),
+                            actionButton("qr_status_pending", "Pending Information", class = "btn-sm btn-default"),
+                            actionButton("qr_status_followup", "Follow-up Scheduled", class = "btn-sm btn-default"),
+                            actionButton("qr_status_resolved", "Case Resolved", class = "btn-sm btn-default")
+                          ),
+                          column(6,
+                            h6("Common Phrases:"),
+                            actionButton("qr_phrase_understand", "\"I understand your concern...\"", class = "btn-sm btn-default"),
+                            actionButton("qr_phrase_patience", "\"Thank you for your patience...\"", class = "btn-sm btn-default"),
+                            actionButton("qr_phrase_assist", "\"Let me assist you with...\"", class = "btn-sm btn-default"),
+                            br(), br(),
+                            h6("Closings:"),
+                            actionButton("qr_close_help", "\"Is there anything else...\"", class = "btn-sm btn-default"),
+                            actionButton("qr_close_contact", "\"Please feel free to contact...\"", class = "btn-sm btn-default"),
+                            actionButton("qr_close_reference", "\"Your reference number is...\"", class = "btn-sm btn-default")
+                          )
+                        ),
+                        hr(),
+                        h5("Copied Text:"),
+                        verbatimTextOutput("quick_response_text")
+                      ),
+
+                      # Manage Templates (Admin only)
+                      tabPanel(
+                        title = "Manage Templates",
+                        br(),
+                        fluidRow(
+                          column(6,
+                            h5("Add New Template"),
+                            textInput("new_template_name", "Template Name"),
+                            selectInput("new_template_category", "Category",
+                                        choices = c("Payroll", "CPD/Licensing", "ICT", "Transfer",
+                                                    "Welfare", "General", "Escalation")),
+                            textInput("new_template_subject", "Subject Line"),
+                            textAreaInput("new_template_body", "Template Body", height = "200px",
+                                          placeholder = "Use {case_code}, {teacher_name}, {region}, etc. for placeholders"),
+                            actionButton("save_new_template", "Save Template", class = "btn-primary",
+                                         icon = icon("save"))
+                          ),
+                          column(6,
+                            h5("Template Management"),
+                            withSpinner(DT::dataTableOutput("admin_templates_table")),
+                            br(),
+                            actionButton("delete_template", "Delete Selected", class = "btn-danger",
+                                         icon = icon("trash")),
+                            actionButton("edit_template", "Edit Selected", class = "btn-warning",
+                                         icon = icon("edit"))
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              ),
+
               # Analytics Tab (unchanged from original)
               tabItem(
                 tabName = "analytics",
@@ -1801,7 +2407,9 @@ server <- function(input, output, session) {
   rv <- reactiveValues(
     logged_in = FALSE,
     user = NULL,
-    page_state = "landing"  # "landing", "login", "analytics", "dashboard"
+    page_state = "landing",  # "landing", "login", "analytics", "dashboard"
+    last_escalated_case = NULL,  # Store escalated case for popup
+    quick_response_text = ""  # Store quick response text for templates
   )
   
   # --- Landing page button handlers ---
@@ -1991,7 +2599,7 @@ server <- function(input, output, session) {
     if (is.null(current)) current <- "dashboard"
 
     if (isTRUE(rv$logged_in)) {
-      # Logged-in users see all menu items
+      # Logged-in users see all menu items including new tabs
       div(class = "header-nav-menu",
           actionButton("nav_dashboard",
                        tagList(icon("dashboard"), "Dashboard"),
@@ -2002,6 +2610,16 @@ server <- function(input, output, session) {
           actionButton("nav_all_cases",
                        tagList(icon("list-alt"), "All Cases"),
                        class = paste("nav-btn", if(current == "all_cases") "active" else "")),
+          actionButton("nav_escalated",
+                       tagList(icon("exclamation-triangle"), "Escalated"),
+                       class = paste("nav-btn", if(current == "escalated_cases") "active" else ""),
+                       style = if(current != "escalated_cases") "background: rgba(220, 38, 38, 0.3) !important;" else ""),
+          actionButton("nav_followups",
+                       tagList(icon("calendar-check"), "Follow-ups"),
+                       class = paste("nav-btn", if(current == "follow_ups") "active" else "")),
+          actionButton("nav_templates",
+                       tagList(icon("file-alt"), "Templates"),
+                       class = paste("nav-btn", if(current == "templates") "active" else "")),
           actionButton("nav_analytics",
                        tagList(icon("chart-bar"), "Analytics"),
                        class = paste("nav-btn", if(current == "analytics") "active" else ""))
@@ -2035,6 +2653,21 @@ server <- function(input, output, session) {
   observeEvent(input$nav_analytics, {
     updateTextInput(session, "current_tab", value = "analytics")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "analytics")
+  })
+
+  observeEvent(input$nav_escalated, {
+    updateTextInput(session, "current_tab", value = "escalated_cases")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "escalated_cases")
+  })
+
+  observeEvent(input$nav_followups, {
+    updateTextInput(session, "current_tab", value = "follow_ups")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "follow_ups")
+  })
+
+  observeEvent(input$nav_templates, {
+    updateTextInput(session, "current_tab", value = "templates")
+    shinydashboard::updateTabItems(session, "sidebar_menu", selected = "templates")
   })
 
   # Sync current_tab when sidebar_menu changes (for any external changes)
@@ -2932,18 +3565,68 @@ server <- function(input, output, session) {
     updateTextAreaInput(session, "note_text", value = "")
   })
   
-  # Escalate case handler
+  # Escalate case handler - Shows escalation reason modal
   observeEvent(input$escalate_case_btn, {
     if (!is.null(selected_case_id())) {
-      uid <- current_user_id()
-      success <- update_case_status(con(), selected_case_id(), "Escalated", "Case escalated for further review", uid)
-      if (success) {
-        tryCatch({ log_activity(pool, uid, "Escalate Case", paste("Case ID:", selected_case_id())) }, error = function(e) {})
-        runjs("$('#caseDetailsModal').modal('hide');")
-        showNotification("Case escalated successfully", type = "warning")
-        shinyjs::click("refresh_my_cases")
-        shinyjs::click("refresh_all_cases")
+      runjs("$('#caseDetailsModal').modal('hide');")
+      runjs("$('#escalationReasonModal').modal('show');")
+    }
+  })
+
+  # Confirm escalation with reason
+  observeEvent(input$confirm_escalation_with_reason, {
+    req(selected_case_id())
+    req(input$escalation_reason_text)
+
+    if (nchar(trimws(input$escalation_reason_text)) < 10) {
+      showNotification("Please provide a detailed escalation reason (at least 10 characters)", type = "warning")
+      return()
+    }
+
+    uid <- current_user_id()
+    reason <- input$escalation_reason_text
+    level <- input$escalation_level
+
+    # Update case status and add escalation reason
+    success <- tryCatch({
+      # Update ticket status
+      dbExecute(con(),
+        "UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), escalation_reason = ? WHERE ticket_id = ?",
+        params = list(reason, selected_case_id()))
+
+      # Log the action
+      add_case_note(con(), selected_case_id(), paste("ESCALATED (Level", level, "):", reason), uid)
+
+      # Insert into escalations table
+      national_pro_user <- dbGetQuery(con(), "SELECT user_id FROM users WHERE email = 'enquiry.nationalprooffice@gmail.com' LIMIT 1")
+      if (nrow(national_pro_user) > 0) {
+        dbExecute(con(),
+          "INSERT INTO escalations (ticket_id, escalated_by_user_id, escalated_to_user_id, escalation_reason, escalation_method) VALUES (?, ?, ?, ?, 'System')",
+          params = list(selected_case_id(), uid, national_pro_user$user_id[1], reason))
       }
+
+      TRUE
+    }, error = function(e) {
+      showNotification(paste("Escalation error:", e$message), type = "error")
+      FALSE
+    })
+
+    if (success) {
+      tryCatch({ log_activity(pool, uid, "Escalate Case", paste("Case ID:", selected_case_id(), "Level:", level)) }, error = function(e) {})
+
+      # Close the reason modal and show escalation popup
+      runjs("$('#escalationReasonModal').modal('hide');")
+
+      # Store escalated case info for popup
+      rv$last_escalated_case <- get_case_details(con(), selected_case_id())
+
+      # Show escalation popup
+      shinyjs::show("escalationPopupOverlay")
+      shinyjs::show("escalationPopup")
+
+      showNotification("Case escalated successfully - National PRO Office notified", type = "warning")
+      shinyjs::click("refresh_my_cases")
+      shinyjs::click("refresh_all_cases")
     }
   })
   
@@ -3302,29 +3985,603 @@ server <- function(input, output, session) {
     filename = function() paste0("helpline_analytics_", Sys.Date(), ".xlsx"),
     content = function(file) {
       wb <- createWorkbook()
-      
+
       addWorksheet(wb, "Regional Performance")
       writeData(wb, "Regional Performance", regional_perf())
-      
+
       addWorksheet(wb, "Category Trends")
       writeData(wb, "Category Trends", category_trends())
-      
+
       addWorksheet(wb, "SLA Summary")
       writeData(wb, "SLA Summary", sla_data()$summary)
       writeData(wb, "SLA Summary", sla_data()$by_region, startRow = 5)
-      
+
       addWorksheet(wb, "SLA Overdue")
       writeData(wb, "SLA Overdue", sla_data()$overdue)
-      
+
       addWorksheet(wb, "Time Series")
       writeData(wb, "Time Series", monthly_series())
-      
+
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
-  
-  
-  
+
+
+  # ========================================
+  # ESCALATION POPUP HANDLERS
+  # ========================================
+
+  # Render escalation popup content
+  output$escalation_popup_content <- renderUI({
+    case_data <- rv$last_escalated_case
+    if (is.null(case_data)) return(NULL)
+
+    tagList(
+      tags$p(tags$strong("Case Code:"), " ", case_data$case_code),
+      tags$p(tags$strong("Teacher:"), " ", case_data$teacher_name),
+      tags$p(tags$strong("Region:"), " ", case_data$region_name),
+      tags$p(tags$strong("Category:"), " ", case_data$category_name),
+      tags$p(tags$strong("Priority:"), " ", case_data$priority)
+    )
+  })
+
+  # Close escalation popup
+  observeEvent(input$close_escalation_popup, {
+    shinyjs::hide("escalationPopupOverlay")
+    shinyjs::hide("escalationPopup")
+    rv$last_escalated_case <- NULL
+  })
+
+  # View escalated case from popup
+  observeEvent(input$view_escalated_case, {
+    shinyjs::hide("escalationPopupOverlay")
+    shinyjs::hide("escalationPopup")
+    if (!is.null(rv$last_escalated_case)) {
+      selected_case_id(rv$last_escalated_case$ticket_id)
+      runjs("$('#caseDetailsModal').modal('show');")
+    }
+  })
+
+  # Go to escalated cases tab
+  observeEvent(input$go_to_escalated_tab, {
+    shinyjs::hide("escalationPopupOverlay")
+    shinyjs::hide("escalationPopup")
+    rv$last_escalated_case <- NULL
+    updateTabItems(session, "sidebar_menu", "escalated_cases")
+  })
+
+
+  # ========================================
+  # ESCALATED CASES TAB HANDLERS
+  # ========================================
+
+  # Reactive data for escalated cases
+  escalated_cases_data <- reactive({
+    input$refresh_escalated  # Dependency for refresh
+
+    tryCatch({
+      base_query <- "
+        SELECT t.ticket_id, t.case_code, t.escalated_at, t.created_at,
+               t.teacher_name, t.teacher_phone, t.teacher_staff_id,
+               t.school_name, t.district, r.region_name,
+               c.category_name, t.priority, t.status, t.summary,
+               t.escalation_reason,
+               TIMESTAMPDIFF(HOUR, t.escalated_at, NOW()) as hours_since_escalation
+        FROM tickets t
+        LEFT JOIN regions r ON t.region_id = r.region_id
+        LEFT JOIN issue_categories c ON t.category_id = c.category_id
+        WHERE t.status = 'Escalated'
+      "
+
+      params <- list()
+
+      # Apply filters
+      if (!is.null(input$esc_region_filter) && input$esc_region_filter != "") {
+        base_query <- paste0(base_query, " AND r.region_name = ?")
+        params <- c(params, input$esc_region_filter)
+      }
+
+      if (!is.null(input$esc_priority_filter) && input$esc_priority_filter != "") {
+        base_query <- paste0(base_query, " AND t.priority = ?")
+        params <- c(params, input$esc_priority_filter)
+      }
+
+      if (!is.null(input$esc_category_filter) && input$esc_category_filter != "") {
+        base_query <- paste0(base_query, " AND c.category_name = ?")
+        params <- c(params, input$esc_category_filter)
+      }
+
+      base_query <- paste0(base_query, " ORDER BY t.escalated_at DESC")
+
+      if (length(params) > 0) {
+        dbGetQuery(con(), base_query, params = params)
+      } else {
+        dbGetQuery(con(), base_query)
+      }
+    }, error = function(e) {
+      data.frame()
+    })
+  })
+
+  # Escalated cases counts
+  output$escalated_total_count <- renderText({
+    nrow(escalated_cases_data())
+  })
+
+  output$escalated_pending_count <- renderText({
+    sum(escalated_cases_data()$status == "Escalated", na.rm = TRUE)
+  })
+
+  output$escalated_today_count <- renderText({
+    data <- escalated_cases_data()
+    if (nrow(data) == 0) return("0")
+    sum(as.Date(data$escalated_at) == Sys.Date(), na.rm = TRUE)
+  })
+
+  output$escalated_critical_count <- renderText({
+    data <- escalated_cases_data()
+    if (nrow(data) == 0) return("0")
+    sum(data$priority %in% c("High", "Urgent"), na.rm = TRUE)
+  })
+
+  # Escalated cases table
+  output$escalated_cases_table <- DT::renderDataTable({
+    data <- escalated_cases_data()
+    if (nrow(data) == 0) return(datatable(data.frame(Message = "No escalated cases")))
+
+    display_data <- data %>%
+      mutate(
+        escalated_at = format(as.POSIXct(escalated_at), "%Y-%m-%d %H:%M"),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
+        priority = paste0('<span class="priority-', tolower(priority), '">', priority, '</span>'),
+        hours_since_escalation = paste(hours_since_escalation, "hours ago")
+      ) %>%
+      select(case_code, escalated_at, teacher_name, region_name, category_name, priority, hours_since_escalation, summary)
+
+    datatable(display_data,
+              options = list(pageLength = 15, scrollX = TRUE, order = list(list(1, 'desc'))),
+              escape = FALSE, rownames = FALSE,
+              selection = 'single',
+              colnames = c("Case", "Escalated At", "Teacher", "Region", "Category", "Priority", "Time Since", "Summary"))
+  })
+
+  # Update region filter choices for escalated cases
+  observe({
+    regions <- get_regions(con())
+    updateSelectInput(session, "esc_region_filter",
+                      choices = c("All Regions" = "", regions$region_name))
+  })
+
+  # Update category filter choices for escalated cases
+  observe({
+    categories <- get_categories(con())
+    updateSelectInput(session, "esc_category_filter",
+                      choices = c("All Categories" = "", categories$category_name))
+  })
+
+
+  # ========================================
+  # FOLLOW-UP SCHEDULING HANDLERS
+  # ========================================
+
+  # Reactive data for follow-ups
+  follow_ups_data <- reactive({
+    input$refresh_followups  # Dependency
+
+    tryCatch({
+      # Try to get from view, fallback to direct query
+      result <- tryCatch({
+        dbGetQuery(con(), "SELECT * FROM pending_follow_ups")
+      }, error = function(e) {
+        # Fallback query if view doesn't exist
+        dbGetQuery(con(), "
+          SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
+                 t.teacher_phone, t.status as ticket_status, r.region_name,
+                 c.category_name, f.follow_up_date, f.follow_up_notes,
+                 f.status as follow_up_status,
+                 CASE
+                   WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
+                   WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
+                   ELSE 'Upcoming'
+                 END as urgency
+          FROM follow_ups f
+          JOIN tickets t ON f.ticket_id = t.ticket_id
+          LEFT JOIN regions r ON t.region_id = r.region_id
+          LEFT JOIN issue_categories c ON t.category_id = c.category_id
+          WHERE f.status = 'Pending'
+          ORDER BY f.follow_up_date ASC
+        ")
+      })
+      result
+    }, error = function(e) {
+      data.frame()
+    })
+  })
+
+  # Follow-up counts
+  output$followup_overdue_count <- renderText({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return("0")
+    sum(data$urgency == "Overdue", na.rm = TRUE)
+  })
+
+  output$followup_today_count <- renderText({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return("0")
+    sum(data$urgency == "Due Today", na.rm = TRUE)
+  })
+
+  output$followup_week_count <- renderText({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return("0")
+    sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
+  })
+
+  output$followup_total_pending <- renderText({
+    nrow(follow_ups_data())
+  })
+
+  # Pending follow-ups table
+  output$pending_followups_table <- DT::renderDataTable({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return(datatable(data.frame(Message = "No pending follow-ups")))
+
+    # Apply filters
+    if (!is.null(input$followup_urgency_filter) && input$followup_urgency_filter != "") {
+      data <- data %>% filter(urgency == input$followup_urgency_filter)
+    }
+
+    if (!is.null(input$followup_region_filter) && input$followup_region_filter != "") {
+      data <- data %>% filter(region_name == input$followup_region_filter)
+    }
+
+    display_data <- data %>%
+      mutate(
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
+        urgency = case_when(
+          urgency == "Overdue" ~ '<span class="badge" style="background:#dc2626;color:white;">Overdue</span>',
+          urgency == "Due Today" ~ '<span class="badge" style="background:#f59e0b;color:white;">Due Today</span>',
+          TRUE ~ '<span class="badge" style="background:#3b82f6;color:white;">Upcoming</span>'
+        )
+      ) %>%
+      select(case_code, teacher_name, region_name, follow_up_date, urgency, follow_up_notes, ticket_status)
+
+    datatable(display_data,
+              options = list(pageLength = 15, scrollX = TRUE),
+              escape = FALSE, rownames = FALSE,
+              colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Case Status"))
+  })
+
+  # Update region filter for follow-ups
+  observe({
+    regions <- get_regions(con())
+    updateSelectInput(session, "followup_region_filter",
+                      choices = c("All Regions" = "", regions$region_name))
+  })
+
+  # Schedule follow-up handler
+  observeEvent(input$schedule_followup, {
+    req(input$followup_case_search)
+    req(input$followup_date)
+
+    # Find the case
+    case <- tryCatch({
+      dbGetQuery(con(), "SELECT ticket_id, case_code FROM tickets WHERE case_code LIKE ? OR teacher_name LIKE ? LIMIT 1",
+                 params = list(paste0("%", input$followup_case_search, "%"), paste0("%", input$followup_case_search, "%")))
+    }, error = function(e) data.frame())
+
+    if (nrow(case) == 0) {
+      showNotification("Case not found. Please enter a valid case code or teacher name.", type = "error")
+      return()
+    }
+
+    # Insert follow-up
+    tryCatch({
+      dbExecute(con(), "
+        INSERT INTO follow_ups (ticket_id, follow_up_date, follow_up_notes, created_by_user_id)
+        VALUES (?, ?, ?, ?)
+      ", params = list(case$ticket_id[1], input$followup_date, input$followup_notes, current_user_id()))
+
+      # Update ticket's next follow-up date
+      dbExecute(con(), "UPDATE tickets SET next_follow_up_date = ? WHERE ticket_id = ?",
+                params = list(input$followup_date, case$ticket_id[1]))
+
+      showNotification(paste("Follow-up scheduled for", input$followup_date), type = "message")
+      updateTextInput(session, "followup_case_search", value = "")
+      updateTextAreaInput(session, "followup_notes", value = "")
+    }, error = function(e) {
+      showNotification(paste("Error scheduling follow-up:", e$message), type = "error")
+    })
+  })
+
+
+  # ========================================
+  # CASE TEMPLATES HANDLERS
+  # ========================================
+
+  # Reactive data for templates
+  templates_data <- reactive({
+    input$refresh_templates  # Dependency
+
+    tryCatch({
+      base_query <- "SELECT * FROM case_templates WHERE is_active = 1"
+
+      if (!is.null(input$template_category_filter) && input$template_category_filter != "") {
+        base_query <- paste0(base_query, " AND template_category = '", input$template_category_filter, "'")
+      }
+
+      if (!is.null(input$template_search) && input$template_search != "") {
+        search_term <- paste0("%", input$template_search, "%")
+        base_query <- paste0(base_query, " AND (template_name LIKE '", search_term, "' OR template_body LIKE '", search_term, "')")
+      }
+
+      base_query <- paste0(base_query, " ORDER BY template_category, template_name")
+      dbGetQuery(con(), base_query)
+    }, error = function(e) {
+      # Return default templates if table doesn't exist
+      data.frame(
+        template_id = 1:3,
+        template_name = c("Case Acknowledgement", "Case Resolved", "Escalation Notice"),
+        template_category = c("General", "General", "Escalation"),
+        template_subject = c("Acknowledgement", "Resolved", "Escalated"),
+        template_body = c(
+          "GES Helpline: Your request has been received. Reference: {case_code}",
+          "GES Helpline: Your case {case_code} has been resolved.",
+          "GES Helpline: Your case {case_code} has been escalated for review."
+        )
+      )
+    })
+  })
+
+  # Render templates list
+  output$templates_list <- renderUI({
+    data <- templates_data()
+    if (nrow(data) == 0) return(p("No templates found"))
+
+    template_cards <- lapply(1:nrow(data), function(i) {
+      t <- data[i, ]
+      cat_class <- tolower(gsub("/", "-", t$template_category))
+
+      div(class = "template-card",
+          onclick = paste0("Shiny.setInputValue('selected_template_id', ", t$template_id, ", {priority: 'event'})"),
+          div(style = "display: flex; justify-content: space-between; align-items: center;",
+              tags$strong(t$template_name),
+              span(class = paste0("template-category-badge template-category-", cat_class), t$template_category)
+          ),
+          tags$small(t$template_subject, style = "color: #6b7280;")
+      )
+    })
+
+    do.call(tagList, template_cards)
+  })
+
+  # Selected template reactive
+  selected_template <- reactive({
+    req(input$selected_template_id)
+    data <- templates_data()
+    data[data$template_id == input$selected_template_id, ]
+  })
+
+  # Render template preview
+  output$template_preview <- renderUI({
+    if (is.null(input$selected_template_id)) {
+      return(p("Select a template to preview", style = "color: #6b7280; text-align: center;"))
+    }
+
+    t <- selected_template()
+    if (nrow(t) == 0) return(NULL)
+
+    tagList(
+      h5(t$template_name[1]),
+      tags$strong("Subject: "), t$template_subject[1],
+      hr(),
+      tags$pre(style = "white-space: pre-wrap; background: #f8fafc; padding: 15px; border-radius: 8px;",
+               t$template_body[1])
+    )
+  })
+
+  # Quick response text
+  output$quick_response_text <- renderText({
+    rv$quick_response_text
+  })
+
+  # Quick response buttons
+  observeEvent(input$qr_ack_received, {
+    rv$quick_response_text <- "GES Helpline: Your request has been received and logged. You will receive an update within 24-48 hours. Thank you."
+  })
+
+  observeEvent(input$qr_ack_escalated, {
+    rv$quick_response_text <- "GES Helpline: Your case has been escalated to the appropriate office for review. You will be contacted within 4 working hours."
+  })
+
+  observeEvent(input$qr_ack_processing, {
+    rv$quick_response_text <- "GES Helpline: Your case is currently being processed. We will update you on progress."
+  })
+
+  observeEvent(input$qr_status_pending, {
+    rv$quick_response_text <- "We require additional information to proceed with your case. Please provide the requested details at your earliest convenience."
+  })
+
+  observeEvent(input$qr_status_followup, {
+    rv$quick_response_text <- "A follow-up has been scheduled for your case. We will contact you on the scheduled date with an update."
+  })
+
+  observeEvent(input$qr_status_resolved, {
+    rv$quick_response_text <- "GES Helpline: Your case has been resolved. If you need further assistance, please contact us."
+  })
+
+  observeEvent(input$qr_phrase_understand, {
+    rv$quick_response_text <- "I understand your concern. Let me help you resolve this matter."
+  })
+
+  observeEvent(input$qr_phrase_patience, {
+    rv$quick_response_text <- "Thank you for your patience. We are working to address your concern as quickly as possible."
+  })
+
+  observeEvent(input$qr_phrase_assist, {
+    rv$quick_response_text <- "Let me assist you with this matter. I will need a few details to proceed."
+  })
+
+  observeEvent(input$qr_close_help, {
+    rv$quick_response_text <- "Is there anything else I can help you with today?"
+  })
+
+  observeEvent(input$qr_close_contact, {
+    rv$quick_response_text <- "Please feel free to contact the GES Teacher Helpline if you have any further questions."
+  })
+
+  observeEvent(input$qr_close_reference, {
+    rv$quick_response_text <- "Your reference number is [CASE_CODE]. Please keep this for future follow-up."
+  })
+
+  # Save new template
+  observeEvent(input$save_new_template, {
+    req(input$new_template_name)
+    req(input$new_template_category)
+    req(input$new_template_body)
+
+    tryCatch({
+      dbExecute(con(), "
+        INSERT INTO case_templates (template_name, template_category, template_subject, template_body)
+        VALUES (?, ?, ?, ?)
+      ", params = list(input$new_template_name, input$new_template_category,
+                       input$new_template_subject, input$new_template_body))
+
+      showNotification("Template saved successfully", type = "message")
+      updateTextInput(session, "new_template_name", value = "")
+      updateTextInput(session, "new_template_subject", value = "")
+      updateTextAreaInput(session, "new_template_body", value = "")
+    }, error = function(e) {
+      showNotification(paste("Error saving template:", e$message), type = "error")
+    })
+  })
+
+  # Admin templates table
+  output$admin_templates_table <- DT::renderDataTable({
+    data <- templates_data()
+    if (nrow(data) == 0) return(datatable(data.frame(Message = "No templates")))
+
+    display_data <- data %>%
+      select(template_id, template_name, template_category, template_subject)
+
+    datatable(display_data,
+              options = list(pageLength = 10, scrollX = TRUE),
+              selection = 'single',
+              rownames = FALSE,
+              colnames = c("ID", "Name", "Category", "Subject"))
+  })
+
+
+  # ========================================
+  # BULK OPERATIONS HANDLERS
+  # ========================================
+
+  # Track selected cases for bulk operations
+  bulk_selected_cases <- reactiveVal(c())
+
+  # Show/hide bulk actions bar based on selection
+  observe({
+    selected <- input$all_cases_table_rows_selected
+    if (length(selected) > 0) {
+      shinyjs::show("bulk_actions_bar")
+      bulk_selected_cases(selected)
+    } else {
+      shinyjs::hide("bulk_actions_bar")
+      bulk_selected_cases(c())
+    }
+  })
+
+  # Selected count display
+  output$bulk_selected_count <- renderText({
+    paste(length(bulk_selected_cases()), "cases selected")
+  })
+
+  # Bulk update status button
+  observeEvent(input$bulk_update_status, {
+    if (length(bulk_selected_cases()) > 0) {
+      runjs("$('#bulkStatusModal').modal('show');")
+    }
+  })
+
+  # Confirm bulk status update
+  observeEvent(input$confirm_bulk_status, {
+    selected <- bulk_selected_cases()
+    if (length(selected) == 0) return()
+
+    data <- all_cases_data()
+    ticket_ids <- data$ticket_id[selected]
+
+    success_count <- 0
+    for (tid in ticket_ids) {
+      tryCatch({
+        update_case_status(con(), tid, input$bulk_new_status, input$bulk_status_notes, current_user_id())
+        success_count <- success_count + 1
+      }, error = function(e) {})
+    }
+
+    runjs("$('#bulkStatusModal').modal('hide');")
+    showNotification(paste("Updated", success_count, "of", length(ticket_ids), "cases"), type = "message")
+    shinyjs::click("refresh_all_cases")
+  })
+
+  # Bulk change priority button
+  observeEvent(input$bulk_change_priority, {
+    if (length(bulk_selected_cases()) > 0) {
+      runjs("$('#bulkPriorityModal').modal('show');")
+    }
+  })
+
+  # Confirm bulk priority change
+  observeEvent(input$confirm_bulk_priority, {
+    selected <- bulk_selected_cases()
+    if (length(selected) == 0) return()
+
+    data <- all_cases_data()
+    ticket_ids <- data$ticket_id[selected]
+
+    success_count <- 0
+    for (tid in ticket_ids) {
+      tryCatch({
+        dbExecute(con(), "UPDATE tickets SET priority = ? WHERE ticket_id = ?",
+                  params = list(input$bulk_new_priority, tid))
+        success_count <- success_count + 1
+      }, error = function(e) {})
+    }
+
+    runjs("$('#bulkPriorityModal').modal('hide');")
+    showNotification(paste("Updated priority for", success_count, "cases"), type = "message")
+    shinyjs::click("refresh_all_cases")
+  })
+
+  # Bulk escalate all
+  observeEvent(input$bulk_escalate, {
+    selected <- bulk_selected_cases()
+    if (length(selected) == 0) return()
+
+    data <- all_cases_data()
+    ticket_ids <- data$ticket_id[selected]
+
+    success_count <- 0
+    for (tid in ticket_ids) {
+      tryCatch({
+        dbExecute(con(), "UPDATE tickets SET status = 'Escalated', escalated_at = NOW() WHERE ticket_id = ?",
+                  params = list(tid))
+        add_case_note(con(), tid, "Bulk escalated for national review", current_user_id())
+        success_count <- success_count + 1
+      }, error = function(e) {})
+    }
+
+    showNotification(paste("Escalated", success_count, "cases"), type = "warning")
+    shinyjs::click("refresh_all_cases")
+  })
+
+  # Clear bulk selection
+  observeEvent(input$bulk_clear_selection, {
+    bulk_selected_cases(c())
+    shinyjs::hide("bulk_actions_bar")
+  })
+
+
 }
 
 # Run the application
