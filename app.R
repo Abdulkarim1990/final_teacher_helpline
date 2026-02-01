@@ -956,8 +956,31 @@ ui <- tagList(
           )
       ),
       
+      # Live Statistics Section
+      div(style = "background: rgba(0,0,0,0.2); padding: 40px; margin: 0 40px 40px 40px; border-radius: 16px; max-width: 1120px; margin-left: auto; margin-right: auto;",
+          tags$h3("Helpline Statistics", style = "color: white; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: 600;"),
+          div(style = "display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px;",
+              div(style = "text-align: center; min-width: 150px;",
+                  tags$div(style = "font-size: 42px; font-weight: 800; color: #f59e0b;", uiOutput("landing_total_cases", inline = TRUE)),
+                  tags$p("Cases Logged", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
+              ),
+              div(style = "text-align: center; min-width: 150px;",
+                  tags$div(style = "font-size: 42px; font-weight: 800; color: #10b981;", uiOutput("landing_resolved_cases", inline = TRUE)),
+                  tags$p("Cases Resolved", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
+              ),
+              div(style = "text-align: center; min-width: 150px;",
+                  tags$div(style = "font-size: 42px; font-weight: 800; color: #3b82f6;", "16"),
+                  tags$p("Regions Covered", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
+              ),
+              div(style = "text-align: center; min-width: 150px;",
+                  tags$div(style = "font-size: 42px; font-weight: 800; color: #8b5cf6;", "24/7"),
+                  tags$p("Support Available", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
+              )
+          )
+      ),
+
       # Feature cards
-      div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 60px 40px; max-width: 1200px; margin: 0 auto;",
+      div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 40px 40px; max-width: 1200px; margin: 0 auto;",
           div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
               tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("headset")),
               tags$h3("Case Management", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
@@ -974,10 +997,74 @@ ui <- tagList(
               tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
           )
       ),
-      
+
+      # How It Works Section
+      div(style = "background: rgba(255,255,255,0.05); padding: 50px 40px; margin-bottom: 0;",
+          div(style = "max-width: 1000px; margin: 0 auto;",
+              tags$h3("How It Works", style = "color: white; text-align: center; margin-bottom: 40px; font-size: 28px; font-weight: 600;"),
+              div(style = "display: flex; justify-content: space-between; flex-wrap: wrap; gap: 30px;",
+                  div(style = "flex: 1; min-width: 200px; text-align: center;",
+                      div(style = "width: 60px; height: 60px; background: #f59e0b; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
+                          tags$span("1", style = "color: white; font-size: 24px; font-weight: 700;")
+                      ),
+                      tags$h4("Report Issue", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
+                      tags$p("Teacher contacts regional helpline with their query or concern", style = "color: #94a3b8; font-size: 14px;")
+                  ),
+                  div(style = "flex: 1; min-width: 200px; text-align: center;",
+                      div(style = "width: 60px; height: 60px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
+                          tags$span("2", style = "color: white; font-size: 24px; font-weight: 700;")
+                      ),
+                      tags$h4("Case Logged", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
+                      tags$p("Regional coordinator logs the case in the system with all details", style = "color: #94a3b8; font-size: 14px;")
+                  ),
+                  div(style = "flex: 1; min-width: 200px; text-align: center;",
+                      div(style = "width: 60px; height: 60px; background: #8b5cf6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
+                          tags$span("3", style = "color: white; font-size: 24px; font-weight: 700;")
+                      ),
+                      tags$h4("Track & Resolve", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
+                      tags$p("Case is tracked, escalated if needed, and resolved with follow-ups", style = "color: #94a3b8; font-size: 14px;")
+                  ),
+                  div(style = "flex: 1; min-width: 200px; text-align: center;",
+                      div(style = "width: 60px; height: 60px; background: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
+                          tags$span("4", style = "color: white; font-size: 24px; font-weight: 700;")
+                      ),
+                      tags$h4("Teacher Notified", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
+                      tags$p("Teacher receives updates and resolution notification", style = "color: #94a3b8; font-size: 14px;")
+                  )
+              )
+          )
+      ),
+
+      # Contact Section
+      div(style = "padding: 50px 40px; background: rgba(0,0,0,0.15);",
+          div(style = "max-width: 1000px; margin: 0 auto; text-align: center;",
+              tags$h3("Contact Your Regional Helpline", style = "color: white; margin-bottom: 30px; font-size: 24px; font-weight: 600;"),
+              tags$p("Each region has a dedicated support coordinator. Contact your regional office for assistance.",
+                     style = "color: #94a3b8; margin-bottom: 30px; font-size: 16px;"),
+              div(style = "display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;",
+                  div(style = "text-align: center;",
+                      icon("envelope", style = "font-size: 28px; color: #f59e0b; margin-bottom: 10px;"),
+                      tags$p("Email", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
+                      tags$p("enquiry.[region]region@gmail.com", style = "color: #94a3b8; font-size: 14px;")
+                  ),
+                  div(style = "text-align: center;",
+                      icon("clock", style = "font-size: 28px; color: #3b82f6; margin-bottom: 10px;"),
+                      tags$p("Hours", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
+                      tags$p("Monday - Friday: 8am - 5pm", style = "color: #94a3b8; font-size: 14px;")
+                  ),
+                  div(style = "text-align: center;",
+                      icon("map-marker-alt", style = "font-size: 28px; color: #10b981; margin-bottom: 10px;"),
+                      tags$p("Coverage", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
+                      tags$p("All 16 Regions of Ghana", style = "color: #94a3b8; font-size: 14px;")
+                  )
+              )
+          )
+      ),
+
       # Footer
       div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
-          tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0;")
+          tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0 0 5px 0;"),
+          tags$p(paste0("Teacher Support Helpline System ", format(Sys.Date(), "%Y")), style = "color: #475569; font-size: 12px; margin: 0;")
       )
   ),
   
@@ -1702,6 +1789,22 @@ ui <- tagList(
                   tabPanel(
                     title = "Case Summary",
                     br(),
+                    # Refresh Bar at top
+                    fluidRow(
+                      column(12,
+                        div(style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 8px;",
+                            div(style = "color: white;",
+                                icon("chart-line", style = "margin-right: 8px;"),
+                                tags$span("Case Summary Dashboard", style = "font-weight: 600; font-size: 16px;"),
+                                tags$small(textOutput("last_refresh_time", inline = TRUE), style = "margin-left: 15px; opacity: 0.8;")
+                            ),
+                            actionButton("refresh_case_summary", "Refresh Data",
+                                        class = "btn btn-light",
+                                        icon = icon("sync"),
+                                        style = "font-weight: 500;")
+                        )
+                      )
+                    ),
                     # Follow-up Alert Widget
                     uiOutput("followup_alert_widget"),
                     # Row 1: Primary KPIs
@@ -2233,6 +2336,25 @@ server <- function(input, output, session) {
   observeEvent(input$login_back_btn, {
     rv$page_state <- "landing"
     output$login_msg <- renderText("")
+  })
+
+  # --- Landing page live statistics ---
+  output$landing_total_cases <- renderUI({
+    tryCatch({
+      count <- dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets")$count
+      tags$span(format(count, big.mark = ","))
+    }, error = function(e) {
+      tags$span("--")
+    })
+  })
+
+  output$landing_resolved_cases <- renderUI({
+    tryCatch({
+      count <- dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets WHERE status IN ('Resolved', 'Closed')")$count
+      tags$span(format(count, big.mark = ","))
+    }, error = function(e) {
+      tags$span("--")
+    })
   })
   
   # --- Observe page state changes and show/hide overlays ---
@@ -2771,6 +2893,22 @@ server <- function(input, output, session) {
   
   observeEvent(input$manual_refresh_dashboard, {
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
+  })
+
+  # Last refresh time tracker
+  last_refresh <- reactiveVal(Sys.time())
+
+  # New prominent refresh button handler
+  observeEvent(input$refresh_case_summary, {
+    dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
+    last_refresh(Sys.time())
+    showNotification("Dashboard data refreshed!", type = "message", duration = 3)
+  })
+
+  # Display last refresh time
+  output$last_refresh_time <- renderText({
+    refresh_time <- last_refresh()
+    paste("Last updated:", format(refresh_time, "%H:%M:%S"))
   })
   
   # Performance metrics table (existing)
