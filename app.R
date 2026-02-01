@@ -4012,35 +4012,37 @@ server <- function(input, output, session) {
   # FOLLOW-UP SCHEDULING HANDLERS
   # ========================================
 
-  # Reactive data for follow-ups
+  # Reactive data for follow-ups - filtered by user's region
   follow_ups_data <- reactive({
     input$refresh_followups  # Dependency
+    forced_region <- user_region_id()  # Get user's region restriction
 
     tryCatch({
-      # Try to get from view, fallback to direct query
-      result <- tryCatch({
-        dbGetQuery(con(), "SELECT * FROM pending_follow_ups")
-      }, error = function(e) {
-        # Fallback query if view doesn't exist
-        dbGetQuery(con(), "
-          SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
-                 t.teacher_phone, t.status as ticket_status, r.region_name,
-                 c.category_name, f.follow_up_date, f.follow_up_notes,
-                 f.status as follow_up_status,
-                 CASE
-                   WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
-                   WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
-                   ELSE 'Upcoming'
-                 END as urgency
-          FROM follow_ups f
-          JOIN tickets t ON f.ticket_id = t.ticket_id
-          LEFT JOIN regions r ON t.region_id = r.region_id
-          LEFT JOIN issue_categories c ON t.category_id = c.category_id
-          WHERE f.status = 'Pending'
-          ORDER BY f.follow_up_date ASC
-        ")
-      })
-      result
+      # Build query with optional region filter
+      base_query <- "
+        SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
+               t.teacher_phone, t.status as ticket_status, r.region_name,
+               r.region_id, c.category_name, f.follow_up_date, f.follow_up_notes,
+               f.status as follow_up_status,
+               CASE
+                 WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
+                 WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
+                 ELSE 'Upcoming'
+               END as urgency
+        FROM follow_ups f
+        JOIN tickets t ON f.ticket_id = t.ticket_id
+        LEFT JOIN regions r ON t.region_id = r.region_id
+        LEFT JOIN issue_categories c ON t.category_id = c.category_id
+        WHERE f.status = 'Pending'"
+
+      # Add region filter for regional users
+      if (!is.null(forced_region)) {
+        base_query <- paste0(base_query, " AND t.region_id = ", forced_region)
+      }
+
+      base_query <- paste0(base_query, " ORDER BY f.follow_up_date ASC")
+
+      dbGetQuery(con(), base_query)
     }, error = function(e) {
       data.frame()
     })
@@ -4092,11 +4094,22 @@ server <- function(input, output, session) {
     valueBox(nrow(follow_ups_data()), "Total Pending", icon = icon("clock"), color = "purple")
   })
 
-  # Follow-up region filter UI
+  # Follow-up region filter UI - region-restricted based on user role
   output$followup_region_filter_ui <- renderUI({
-    regions <- get_regions(con())
-    selectInput("followup_region_filter", "Region",
-                choices = c("All Regions" = "", regions$region_name))
+    regions_df <- get_regions(con())
+    forced_region <- user_region_id()
+
+    if (!is.null(forced_region)) {
+      # Regional users can only see their own region - no dropdown needed
+      region_row <- regions_df[regions_df$region_id == forced_region, ]
+      selectInput("followup_region_filter", "Region",
+                  choices = setNames(region_row$region_name, region_row$region_name),
+                  selected = region_row$region_name)
+    } else {
+      # National staff can filter by any region
+      selectInput("followup_region_filter", "Region",
+                  choices = c("All Regions" = "", regions_df$region_name))
+    }
   })
 
   # Pending follow-ups table
@@ -4130,26 +4143,39 @@ server <- function(input, output, session) {
               colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Case Status"))
   })
 
-  # Update region filter for follow-ups
-  observe({
-    regions <- get_regions(con())
-    updateSelectInput(session, "followup_region_filter",
-                      choices = c("All Regions" = "", regions$region_name))
-  })
-
-  # Schedule follow-up handler
+  # Schedule follow-up handler - restricted to user's region
   observeEvent(input$schedule_followup, {
     req(input$followup_case_search)
     req(input$followup_date)
 
-    # Find the case
+    forced_region <- user_region_id()
+
+    # Find the case - restricted to user's region for regional users
     case <- tryCatch({
-      dbGetQuery(con(), "SELECT ticket_id, case_code FROM tickets WHERE case_code LIKE ? OR teacher_name LIKE ? LIMIT 1",
-                 params = list(paste0("%", input$followup_case_search, "%"), paste0("%", input$followup_case_search, "%")))
+      if (!is.null(forced_region)) {
+        # Regional users can only schedule follow-ups for cases in their region
+        dbGetQuery(con(),
+          "SELECT ticket_id, case_code FROM tickets
+           WHERE (case_code LIKE ? OR teacher_name LIKE ?) AND region_id = ? LIMIT 1",
+          params = list(paste0("%", input$followup_case_search, "%"),
+                       paste0("%", input$followup_case_search, "%"),
+                       forced_region))
+      } else {
+        # National users can schedule follow-ups for any case
+        dbGetQuery(con(),
+          "SELECT ticket_id, case_code FROM tickets
+           WHERE case_code LIKE ? OR teacher_name LIKE ? LIMIT 1",
+          params = list(paste0("%", input$followup_case_search, "%"),
+                       paste0("%", input$followup_case_search, "%")))
+      }
     }, error = function(e) data.frame())
 
     if (nrow(case) == 0) {
-      showNotification("Case not found. Please enter a valid case code or teacher name.", type = "error")
+      if (!is.null(forced_region)) {
+        showNotification("Case not found in your region. Please enter a valid case code or teacher name.", type = "error")
+      } else {
+        showNotification("Case not found. Please enter a valid case code or teacher name.", type = "error")
+      }
       return()
     }
 
@@ -4164,7 +4190,7 @@ server <- function(input, output, session) {
       dbExecute(con(), "UPDATE tickets SET next_follow_up_date = ? WHERE ticket_id = ?",
                 params = list(input$followup_date, case$ticket_id[1]))
 
-      showNotification(paste("Follow-up scheduled for", input$followup_date), type = "message")
+      showNotification(paste("Follow-up scheduled for", case$case_code[1], "on", input$followup_date), type = "message")
       updateTextInput(session, "followup_case_search", value = "")
       updateTextAreaInput(session, "followup_notes", value = "")
     }, error = function(e) {
