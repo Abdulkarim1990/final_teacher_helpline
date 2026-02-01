@@ -524,10 +524,10 @@ get_case_details <- function(con, ticket_id) {
 # NEW: Get case action history/timeline
 get_case_actions <- function(con, ticket_id) {
   if (is.null(con) || is.null(ticket_id)) return(data.frame())
-  
+
   tryCatch({
     query <- "
-      SELECT ta.*, 
+      SELECT ta.*,
              u.full_name as action_by_name,
              CASE ta.action_type
                WHEN 'create' THEN 'Case Created'
@@ -545,10 +545,38 @@ get_case_actions <- function(con, ticket_id) {
       WHERE ta.ticket_id = ?
       ORDER BY ta.action_at DESC
     "
-    
+
     dbGetQuery(con, query, params = list(ticket_id))
   }, error = function(e) {
     showNotification(paste("Error loading case actions:", e$message), type = "error")
+    data.frame()
+  })
+}
+
+# NEW: Get follow-ups for a specific case
+get_case_followups <- function(con, ticket_id) {
+  if (is.null(con) || is.null(ticket_id)) return(data.frame())
+
+  tryCatch({
+    query <- "
+      SELECT f.*,
+             u1.full_name as created_by_name,
+             u2.full_name as completed_by_name,
+             CASE
+               WHEN f.status = 'Completed' THEN 'Completed'
+               WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
+               WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
+               ELSE 'Upcoming'
+             END as urgency
+      FROM follow_ups f
+      LEFT JOIN users u1 ON f.created_by_user_id = u1.user_id
+      LEFT JOIN users u2 ON f.completed_by_user_id = u2.user_id
+      WHERE f.ticket_id = ?
+      ORDER BY f.follow_up_date DESC
+    "
+
+    dbGetQuery(con, query, params = list(ticket_id))
+  }, error = function(e) {
     data.frame()
   })
 }
@@ -1674,6 +1702,8 @@ ui <- tagList(
                   tabPanel(
                     title = "Case Summary",
                     br(),
+                    # Follow-up Alert Widget
+                    uiOutput("followup_alert_widget"),
                     # Row 1: Primary KPIs
                     fluidRow(
                       infoBoxOutput("total_cases"),
@@ -1765,16 +1795,20 @@ ui <- tagList(
                         title = "Pending Follow-ups", status = "warning", solidHeader = TRUE,
                         width = 8,
                         fluidRow(
-                          column(4,
+                          column(3,
                             selectInput("followup_urgency_filter", "Filter by Urgency",
                                         choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
                           ),
-                          column(4,
+                          column(3,
                             uiOutput("followup_region_filter_ui")
                           ),
-                          column(4,
+                          column(3,
                             actionButton("refresh_followups", "Refresh", class = "btn-warning",
                                          style = "margin-top: 25px;", icon = icon("sync"))
+                          ),
+                          column(3,
+                            downloadButton("export_followups", "Export to Excel",
+                                           class = "btn-success", style = "margin-top: 25px;")
                           )
                         ),
                         hr(),
@@ -2320,6 +2354,30 @@ server <- function(input, output, session) {
         rv$user <- u[1, ]
         rv$page_state <- "dashboard"
         output$login_msg <- renderText("")
+
+        # Check for overdue follow-ups and show alert after login
+        tryCatch({
+          user_region <- if (can_see_all_regions(u$role[1])) NULL else u$region_id[1]
+
+          overdue_query <- "
+            SELECT COUNT(*) as count FROM follow_ups f
+            JOIN tickets t ON f.ticket_id = t.ticket_id
+            WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
+
+          if (!is.null(user_region)) {
+            overdue_query <- paste0(overdue_query, " AND t.region_id = ", user_region)
+          }
+
+          overdue_count <- dbGetQuery(conn, overdue_query)$count
+
+          if (overdue_count > 0) {
+            showNotification(
+              paste0("You have ", overdue_count, " overdue follow-up(s) that need attention!"),
+              type = "warning",
+              duration = 10
+            )
+          }
+        }, error = function(e) {})
       })
     }, error = function(e) {
       output$login_msg <- renderText("Connection error. Please try again.")
@@ -2985,10 +3043,26 @@ server <- function(input, output, session) {
     })
   })
   
-  # Case Details Modal Logic
+  # Case Details Modal Logic - with region access control
   observeEvent(input$view_case_id, {
     if (!is.null(input$view_case_id)) {
       cat("Opening case details for ticket_id:", input$view_case_id, "\n")
+
+      # Check region access for regional users
+      forced_region <- user_region_id()
+      if (!is.null(forced_region)) {
+        # Verify case belongs to user's region
+        case_region <- tryCatch({
+          dbGetQuery(con(), "SELECT region_id FROM tickets WHERE ticket_id = ?",
+                     params = list(input$view_case_id))
+        }, error = function(e) data.frame())
+
+        if (nrow(case_region) == 0 || case_region$region_id[1] != forced_region) {
+          showNotification("Access denied: This case is not in your region.", type = "error")
+          return()
+        }
+      }
+
       selected_case_id(input$view_case_id)
       runjs("$('#caseDetailsModal').modal('show');")
     }
@@ -2997,14 +3071,15 @@ server <- function(input, output, session) {
   # NEW: Render Case Details Content with improved error handling
   output$case_details_content <- renderUI({
     req(selected_case_id())
-    
+
     case_data <- get_case_details(con(), selected_case_id())
     actions_data <- get_case_actions(con(), selected_case_id())
-    
+    followups_data <- get_case_followups(con(), selected_case_id())
+
     if (is.null(case_data)) {
       return(div(h3("Case not found"), class = "text-center"))
     }
-    
+
     # Safe helper function for handling NULL/NA values
     safe_value <- function(x, default = "Not provided") {
       if (is.null(x) || is.na(x) || x == "") default else as.character(x)
@@ -3122,7 +3197,50 @@ server <- function(input, output, session) {
             }
           )
       ),
-      
+
+      # Follow-up History Section
+      div(class = "info-card", style = "margin-bottom: 20px;",
+          h4("Follow-up History", style = "color: #1e3a8a; margin-bottom: 15px;"),
+          if (!is.null(followups_data) && nrow(followups_data) > 0) {
+            div(
+              lapply(1:nrow(followups_data), function(i) {
+                fu <- followups_data[i, ]
+                status_color <- switch(safe_value(fu$urgency, "Upcoming"),
+                  "Completed" = "#10b981",
+                  "Overdue" = "#dc2626",
+                  "Due Today" = "#f59e0b",
+                  "#3b82f6"
+                )
+                div(style = "padding: 12px; margin-bottom: 10px; background: #f8fafc; border-radius: 6px; border-left: 4px solid; border-left-color: inherit;",
+                    style = paste0("border-left-color: ", status_color, ";"),
+                    fluidRow(
+                      column(8,
+                        div(style = "font-weight: 600; color: #1e3a8a;",
+                            paste("Follow-up:", format(as.Date(fu$follow_up_date), "%Y-%m-%d"))),
+                        if (!is.null(fu$follow_up_notes) && fu$follow_up_notes != "" && !is.na(fu$follow_up_notes)) {
+                          div(style = "margin-top: 5px; color: #374151; font-size: 13px;", fu$follow_up_notes)
+                        },
+                        div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
+                            paste("Scheduled by:", safe_value(fu$created_by_name, "Unknown")))
+                      ),
+                      column(4, style = "text-align: right;",
+                        tags$span(safe_value(fu$urgency, "Upcoming"),
+                                  style = paste0("display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; background: ", status_color, ";")),
+                        if (safe_value(fu$urgency, "") == "Completed" && !is.null(fu$completed_by_name) && !is.na(fu$completed_by_name)) {
+                          div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
+                              paste("Completed by:", fu$completed_by_name))
+                        }
+                      )
+                    )
+                )
+              })
+            )
+          } else {
+            div(style = "padding: 20px; text-align: center; color: #6b7280; font-style: italic;",
+                "No follow-ups scheduled for this case.")
+          }
+      ),
+
       # Action Buttons
       fluidRow(
         column(12,
@@ -4012,6 +4130,45 @@ server <- function(input, output, session) {
   # FOLLOW-UP SCHEDULING HANDLERS
   # ========================================
 
+  # Follow-up Alert Widget for Dashboard
+  output$followup_alert_widget <- renderUI({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return(NULL)
+
+    overdue_count <- sum(data$urgency == "Overdue", na.rm = TRUE)
+    today_count <- sum(data$urgency == "Due Today", na.rm = TRUE)
+
+    if (overdue_count == 0 && today_count == 0) return(NULL)
+
+    # Build alert message
+    alert_parts <- c()
+    if (overdue_count > 0) {
+      alert_parts <- c(alert_parts, paste0("<strong>", overdue_count, " overdue</strong>"))
+    }
+    if (today_count > 0) {
+      alert_parts <- c(alert_parts, paste0("<strong>", today_count, " due today</strong>"))
+    }
+
+    alert_class <- if (overdue_count > 0) "alert-danger" else "alert-warning"
+
+    fluidRow(
+      column(12,
+        div(class = paste("alert", alert_class), style = "margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;",
+            div(
+              icon("bell", style = "margin-right: 10px;"),
+              HTML(paste0("Follow-up Alert: You have ", paste(alert_parts, collapse = " and "), " follow-ups that need attention."))
+            ),
+            actionButton("go_to_followups", "View Follow-ups", class = "btn btn-sm btn-outline-dark")
+        )
+      )
+    )
+  })
+
+  # Navigate to Follow-ups tab when alert button clicked
+  observeEvent(input$go_to_followups, {
+    updateTabsetPanel(session, "main_tabs", selected = "Follow-ups")
+  })
+
   # Reactive data for follow-ups - filtered by user's region
   follow_ups_data <- reactive({
     input$refresh_followups  # Dependency
@@ -4112,7 +4269,7 @@ server <- function(input, output, session) {
     }
   })
 
-  # Pending follow-ups table
+  # Pending follow-ups table with complete action
   output$pending_followups_table <- DT::renderDataTable({
     data <- follow_ups_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No pending follow-ups")))
@@ -4133,14 +4290,120 @@ server <- function(input, output, session) {
           urgency == "Overdue" ~ '<span class="badge" style="background:#dc2626;color:white;">Overdue</span>',
           urgency == "Due Today" ~ '<span class="badge" style="background:#f59e0b;color:white;">Due Today</span>',
           TRUE ~ '<span class="badge" style="background:#3b82f6;color:white;">Upcoming</span>'
+        ),
+        actions = paste0(
+          '<button class="btn btn-success btn-xs" onclick="Shiny.setInputValue(\'complete_followup_id\', ',
+          follow_up_id, ', {priority: \'event\'});" title="Mark as Complete">',
+          '<i class="fa fa-check"></i> Complete</button>'
         )
       ) %>%
-      select(case_code, teacher_name, region_name, follow_up_date, urgency, follow_up_notes, ticket_status)
+      select(case_code, teacher_name, region_name, follow_up_date, urgency, follow_up_notes, actions)
 
     datatable(display_data,
-              options = list(pageLength = 15, scrollX = TRUE),
+              options = list(pageLength = 15, scrollX = TRUE, columnDefs = list(list(width = '100px', targets = 6))),
               escape = FALSE, rownames = FALSE,
-              colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Case Status"))
+              colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Actions"))
+  })
+
+  # Export follow-ups to Excel
+  output$export_followups <- downloadHandler(
+    filename = function() {
+      paste0("follow_ups_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
+    },
+    content = function(file) {
+      data <- follow_ups_data()
+
+      if (nrow(data) == 0) {
+        # Create empty workbook with message
+        wb <- createWorkbook()
+        addWorksheet(wb, "Follow-ups")
+        writeData(wb, "Follow-ups", data.frame(Message = "No follow-ups found"))
+        saveWorkbook(wb, file, overwrite = TRUE)
+        return()
+      }
+
+      # Apply current filters
+      if (!is.null(input$followup_urgency_filter) && input$followup_urgency_filter != "") {
+        data <- data %>% filter(urgency == input$followup_urgency_filter)
+      }
+      if (!is.null(input$followup_region_filter) && input$followup_region_filter != "") {
+        data <- data %>% filter(region_name == input$followup_region_filter)
+      }
+
+      # Prepare export data
+      export_data <- data %>%
+        select(case_code, teacher_name, teacher_phone, region_name,
+               category_name, follow_up_date, urgency, follow_up_notes, ticket_status) %>%
+        rename(
+          `Case Code` = case_code,
+          `Teacher Name` = teacher_name,
+          `Phone` = teacher_phone,
+          `Region` = region_name,
+          `Category` = category_name,
+          `Follow-up Date` = follow_up_date,
+          `Status` = urgency,
+          `Notes` = follow_up_notes,
+          `Case Status` = ticket_status
+        )
+
+      # Create workbook with styling
+      wb <- createWorkbook()
+      addWorksheet(wb, "Follow-ups")
+
+      # Header style
+      headerStyle <- createStyle(
+        fontSize = 12, fontColour = "#FFFFFF", halign = "center",
+        fgFill = "#1e3a8a", border = "TopBottomLeftRight",
+        textDecoration = "bold"
+      )
+
+      # Write data
+      writeData(wb, "Follow-ups", export_data, headerStyle = headerStyle)
+
+      # Conditional formatting for urgency
+      overdueStyle <- createStyle(fontColour = "#dc2626", textDecoration = "bold")
+      todayStyle <- createStyle(fontColour = "#f59e0b", textDecoration = "bold")
+
+      # Auto width columns
+      setColWidths(wb, "Follow-ups", cols = 1:ncol(export_data), widths = "auto")
+
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
+
+  # Mark follow-up as complete handler
+  observeEvent(input$complete_followup_id, {
+    req(input$complete_followup_id)
+
+    tryCatch({
+      # Update follow-up status to Completed
+      dbExecute(con(), "
+        UPDATE follow_ups
+        SET status = 'Completed',
+            completed_at = NOW(),
+            completed_by_user_id = ?
+        WHERE follow_up_id = ?
+      ", params = list(current_user_id(), input$complete_followup_id))
+
+      # Log the action in ticket_actions
+      followup_info <- dbGetQuery(con(),
+        "SELECT ticket_id FROM follow_ups WHERE follow_up_id = ?",
+        params = list(input$complete_followup_id))
+
+      if (nrow(followup_info) > 0) {
+        dbExecute(con(), "
+          INSERT INTO ticket_actions (ticket_id, action_type, action_by_user_id, notes)
+          VALUES (?, 'note', ?, 'Follow-up completed')
+        ", params = list(followup_info$ticket_id[1], current_user_id()))
+      }
+
+      showNotification("Follow-up marked as complete!", type = "message")
+
+      # Refresh the follow-ups data
+      shinyjs::click("refresh_followups")
+    }, error = function(e) {
+      showNotification(paste("Error completing follow-up:", e$message), type = "error")
+    })
   })
 
   # Schedule follow-up handler - restricted to user's region
