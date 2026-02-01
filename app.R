@@ -1106,7 +1106,55 @@ ui <- tagList(
         )
     )
   ),
-  
+
+  # ========================================
+  # PASSWORD CHANGE MODAL OVERLAY
+  # ========================================
+  hidden(
+    div(id = "password_change_overlay",
+        style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100001; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;",
+
+        div(style = "background: white; border-radius: 16px; padding: 40px; width: 450px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
+
+            div(style = "text-align: center; margin-bottom: 25px;",
+                tags$div(icon("key"), style = "font-size: 48px; color: #f59e0b; margin-bottom: 15px;"),
+                tags$h2("Change Your Password", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 10px 0;"),
+                uiOutput("password_change_subtitle")
+            ),
+
+            div(
+              passwordInput("current_password", "Current Password", placeholder = "Enter current password", width = "100%"),
+              passwordInput("new_password", "New Password", placeholder = "Enter new password (min 8 characters)", width = "100%"),
+              passwordInput("confirm_password", "Confirm New Password", placeholder = "Re-enter new password", width = "100%"),
+
+              # Password requirements hint
+              div(style = "background: #f0f9ff; padding: 12px; border-radius: 8px; margin: 15px 0;",
+                  tags$p(style = "margin: 0 0 8px 0; font-weight: 600; color: #1e3a8a; font-size: 13px;", "Password Requirements:"),
+                  tags$ul(style = "margin: 0; padding-left: 20px; color: #64748b; font-size: 12px;",
+                    tags$li("At least 8 characters long"),
+                    tags$li("Contains at least one uppercase letter"),
+                    tags$li("Contains at least one lowercase letter"),
+                    tags$li("Contains at least one number")
+                  )
+              ),
+
+              div(style = "display: flex; gap: 10px; margin-top: 20px;",
+                  actionButton("change_password_btn", "Change Password",
+                               class = "btn btn-primary",
+                               style = "flex: 1; padding: 12px; font-size: 16px; font-weight: 600; background: #1e3a8a; border-color: #1e3a8a; border-radius: 8px;"),
+                  uiOutput("skip_password_change_ui")
+              ),
+
+              br(),
+              div(style = "text-align: center;",
+                  tags$span(id = "password_change_msg_display", style = "color: #dc2626; font-weight: 500;",
+                            textOutput("password_change_msg", inline = TRUE))
+              )
+            )
+        )
+    )
+  ),
+
   # ========================================
   # MAIN DASHBOARD (hidden until login or analytics)
   # ========================================
@@ -2325,7 +2373,9 @@ server <- function(input, output, session) {
     user = NULL,
     page_state = "landing",  # "landing", "login", "analytics", "dashboard"
     last_escalated_case = NULL,  # Store escalated case for popup
-    quick_response_text = ""  # Store quick response text for templates
+    quick_response_text = "",  # Store quick response text for templates
+    first_time_login = FALSE,  # Track if this is user's first login
+    show_password_change = FALSE  # Track if password change modal should show
   )
   
   # --- Landing page button handlers ---
@@ -2465,41 +2515,58 @@ server <- function(input, output, session) {
                            "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Login successful')",
                            params = list(email, u$user_id[1])
         ), silent = TRUE)
-        
+
+        # Check if this is a first-time login (last_login is NULL)
+        is_first_login <- is.null(u$last_login[1]) || is.na(u$last_login[1])
+
         # Update last_login
         try(DBI::dbExecute(conn,
                            "UPDATE users SET last_login = NOW() WHERE user_id = ?",
                            params = list(u$user_id[1])
         ), silent = TRUE)
-        
+
         rv$logged_in <- TRUE
         rv$user <- u[1, ]
-        rv$page_state <- "dashboard"
+        rv$first_time_login <- is_first_login
         output$login_msg <- renderText("")
 
-        # Check for overdue follow-ups and show alert after login
-        tryCatch({
-          user_region <- if (can_see_all_regions(u$role[1])) NULL else u$region_id[1]
+        # If first-time login, show password change modal
+        if (is_first_login) {
+          rv$show_password_change <- TRUE
+          rv$page_state <- "dashboard"  # Go to dashboard but show overlay
+          shinyjs::show("password_change_overlay")
+          shinyjs::hide("login_overlay")
+          shinyjs::show("main_app")
+          showNotification("Welcome! Please change your password for security.", type = "warning", duration = 8)
+        } else {
+          rv$page_state <- "dashboard"
+        }
 
-          overdue_query <- "
-            SELECT COUNT(*) as count FROM follow_ups f
-            JOIN tickets t ON f.ticket_id = t.ticket_id
-            WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
+        # Check for overdue follow-ups and show alert after login (only if not first time)
+        if (!is_first_login) {
+          tryCatch({
+            user_region <- if (can_see_all_regions(u$role[1])) NULL else u$region_id[1]
 
-          if (!is.null(user_region)) {
-            overdue_query <- paste0(overdue_query, " AND t.region_id = ", user_region)
-          }
+            overdue_query <- "
+              SELECT COUNT(*) as count FROM follow_ups f
+              JOIN tickets t ON f.ticket_id = t.ticket_id
+              WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
 
-          overdue_count <- dbGetQuery(conn, overdue_query)$count
+            if (!is.null(user_region)) {
+              overdue_query <- paste0(overdue_query, " AND t.region_id = ", user_region)
+            }
 
-          if (overdue_count > 0) {
-            showNotification(
-              paste0("You have ", overdue_count, " overdue follow-up(s) that need attention!"),
-              type = "warning",
-              duration = 10
-            )
-          }
-        }, error = function(e) {})
+            overdue_count <- dbGetQuery(conn, overdue_query)$count
+
+            if (overdue_count > 0) {
+              showNotification(
+                paste0("You have ", overdue_count, " overdue follow-up(s) that need attention!"),
+                type = "warning",
+                duration = 10
+              )
+            }
+          }, error = function(e) {})
+        }
       })
     }, error = function(e) {
       output$login_msg <- renderText("Connection error. Please try again.")
@@ -2515,11 +2582,177 @@ server <- function(input, output, session) {
     }
     rv$logged_in <- FALSE
     rv$user <- NULL
+    rv$first_time_login <- FALSE
+    rv$show_password_change <- FALSE
     rv$page_state <- "landing"
     updateTextInput(session, "login_email", value = "")
     updateTextInput(session, "login_password", value = "")
+    shinyjs::hide("password_change_overlay")
   })
-  
+
+  # ========================================
+  # PASSWORD CHANGE HANDLERS
+  # ========================================
+
+  # Password change subtitle (different message for first-time vs voluntary)
+  output$password_change_subtitle <- renderUI({
+    if (isTRUE(rv$first_time_login)) {
+      tags$p("For security, please change your default password.", style = "color: #6b7280; margin: 0; font-size: 14px;")
+    } else {
+      tags$p("Enter your current password and choose a new one.", style = "color: #6b7280; margin: 0; font-size: 14px;")
+    }
+  })
+
+  # Skip button UI (only show for first-time login, with warning)
+  output$skip_password_change_ui <- renderUI({
+    if (isTRUE(rv$first_time_login)) {
+      actionButton("skip_password_change", "Skip for Now",
+                   class = "btn btn-outline-secondary",
+                   style = "padding: 12px 20px; font-size: 14px; border-radius: 8px;")
+    } else {
+      actionButton("cancel_password_change", "Cancel",
+                   class = "btn btn-outline-secondary",
+                   style = "padding: 12px 20px; font-size: 14px; border-radius: 8px;")
+    }
+  })
+
+  # Open password change from header button
+  observeEvent(input$open_change_password, {
+    rv$show_password_change <- TRUE
+    rv$first_time_login <- FALSE  # This is a voluntary change
+    shinyjs::show("password_change_overlay")
+    updateTextInput(session, "current_password", value = "")
+    updateTextInput(session, "new_password", value = "")
+    updateTextInput(session, "confirm_password", value = "")
+    output$password_change_msg <- renderText("")
+  })
+
+  # Skip password change (first-time login only)
+  observeEvent(input$skip_password_change, {
+    rv$show_password_change <- FALSE
+    rv$first_time_login <- FALSE
+    shinyjs::hide("password_change_overlay")
+    showNotification("You can change your password anytime from the key icon in the header.", type = "message", duration = 6)
+  })
+
+  # Cancel password change (voluntary change)
+  observeEvent(input$cancel_password_change, {
+    rv$show_password_change <- FALSE
+    shinyjs::hide("password_change_overlay")
+    updateTextInput(session, "current_password", value = "")
+    updateTextInput(session, "new_password", value = "")
+    updateTextInput(session, "confirm_password", value = "")
+    output$password_change_msg <- renderText("")
+  })
+
+  # Password validation function
+  validate_password <- function(password) {
+    if (nchar(password) < 8) {
+      return(list(valid = FALSE, msg = "Password must be at least 8 characters long."))
+    }
+    if (!grepl("[A-Z]", password)) {
+      return(list(valid = FALSE, msg = "Password must contain at least one uppercase letter."))
+    }
+    if (!grepl("[a-z]", password)) {
+      return(list(valid = FALSE, msg = "Password must contain at least one lowercase letter."))
+    }
+    if (!grepl("[0-9]", password)) {
+      return(list(valid = FALSE, msg = "Password must contain at least one number."))
+    }
+    return(list(valid = TRUE, msg = ""))
+  }
+
+  # Change password handler
+  observeEvent(input$change_password_btn, {
+    req(rv$user)
+
+    current_pwd <- input$current_password
+    new_pwd <- input$new_password
+    confirm_pwd <- input$confirm_password
+
+    # Validate inputs
+    if (is.null(current_pwd) || current_pwd == "") {
+      output$password_change_msg <- renderText("Please enter your current password.")
+      return()
+    }
+
+    if (is.null(new_pwd) || new_pwd == "") {
+      output$password_change_msg <- renderText("Please enter a new password.")
+      return()
+    }
+
+    if (is.null(confirm_pwd) || confirm_pwd == "") {
+      output$password_change_msg <- renderText("Please confirm your new password.")
+      return()
+    }
+
+    if (new_pwd != confirm_pwd) {
+      output$password_change_msg <- renderText("New passwords do not match.")
+      return()
+    }
+
+    if (new_pwd == current_pwd) {
+      output$password_change_msg <- renderText("New password must be different from current password.")
+      return()
+    }
+
+    # Validate password strength
+    validation <- validate_password(new_pwd)
+    if (!validation$valid) {
+      output$password_change_msg <- renderText(validation$msg)
+      return()
+    }
+
+    # Verify current password
+    tryCatch({
+      conn <- poolCheckout(pool)
+      on.exit(poolReturn(conn))
+
+      user_data <- dbGetQuery(conn, "SELECT password_hash FROM users WHERE user_id = ?",
+                              params = list(rv$user$user_id))
+
+      if (nrow(user_data) == 0) {
+        output$password_change_msg <- renderText("User not found.")
+        return()
+      }
+
+      # Check current password
+      ok <- FALSE
+      try({ ok <- bcrypt::checkpw(current_pwd, user_data$password_hash[1]) }, silent = TRUE)
+
+      if (!isTRUE(ok)) {
+        output$password_change_msg <- renderText("Current password is incorrect.")
+        return()
+      }
+
+      # Hash new password and update
+      new_hash <- bcrypt::hashpw(new_pwd)
+
+      dbExecute(conn, "UPDATE users SET password_hash = ? WHERE user_id = ?",
+                params = list(new_hash, rv$user$user_id))
+
+      # Log the password change
+      try(dbExecute(conn,
+                    "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Password changed')",
+                    params = list(rv$user$email, rv$user$user_id)
+      ), silent = TRUE)
+
+      # Close the modal and show success
+      rv$show_password_change <- FALSE
+      rv$first_time_login <- FALSE
+      shinyjs::hide("password_change_overlay")
+      updateTextInput(session, "current_password", value = "")
+      updateTextInput(session, "new_password", value = "")
+      updateTextInput(session, "confirm_password", value = "")
+      output$password_change_msg <- renderText("")
+
+      showNotification("Password changed successfully!", type = "message", duration = 5)
+
+    }, error = function(e) {
+      output$password_change_msg <- renderText(paste("Error:", e$message))
+    })
+  })
+
   # --- Back to landing from analytics (for non-logged-in users) ---
   observeEvent(input$back_to_landing_btn, {
     rv$page_state <- "landing"
@@ -2537,8 +2770,13 @@ server <- function(input, output, session) {
             div(class = "user-name", rv$user$full_name),
             div(class = "user-role", rv$user$role)
           ),
-          actionButton("logout_btn", "Logout", class = "btn btn-sm",
-                       style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+          div(style = "display: flex; gap: 8px;",
+              actionButton("open_change_password", icon("key"), label = NULL,
+                           class = "btn btn-sm", title = "Change Password",
+                           style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 5px 10px;"),
+              actionButton("logout_btn", "Logout", class = "btn btn-sm",
+                           style = "background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px;")
+          )
       )
     } else {
       div(class = "user-header-info",
