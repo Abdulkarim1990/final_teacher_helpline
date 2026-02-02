@@ -31,6 +31,27 @@ library(bcrypt)
 # Helper function to replace %||%
 `%or%` <- function(a, b) if (is.null(a) || is.na(a) || a == "") b else a
 
+# =============================================================================
+# SECURITY: HTML Escaping to prevent XSS attacks
+# Always use this function when rendering user-supplied data as HTML
+# =============================================================================
+escape_html <- function(text) {
+  if (is.null(text) || length(text) == 0) return("")
+  if (is.na(text)) return("")
+  text <- as.character(text)
+  text <- gsub("&", "&amp;", text, fixed = TRUE)
+  text <- gsub("<", "&lt;", text, fixed = TRUE)
+  text <- gsub(">", "&gt;", text, fixed = TRUE)
+  text <- gsub("\"", "&quot;", text, fixed = TRUE)
+  text <- gsub("'", "&#39;", text, fixed = TRUE)
+  return(text)
+}
+
+# Vectorized version for data frames
+escape_html_vec <- function(x) {
+  sapply(x, escape_html, USE.NAMES = FALSE)
+}
+
 # Create professional theme
 mytheme <- create_theme(
   adminlte_color(
@@ -49,48 +70,72 @@ mytheme <- create_theme(
   )
 )
 
-# Enhanced database connection for Digital Ocean MySQL
+# =============================================================================
+# SECURITY: Database Connection Configuration
+# All credentials MUST be provided via environment variables
+# NEVER hardcode credentials in source code
+# =============================================================================
+
+# Helper function to securely get required environment variables
+get_required_env <- function(var_name, default = NULL) {
+  value <- Sys.getenv(var_name, unset = "")
+  if (value == "" && is.null(default)) {
+    stop(paste0("SECURITY ERROR: Required environment variable '", var_name, "' is not set. ",
+                "Please configure all database credentials as environment variables."))
+  }
+  if (value == "") return(default)
+  return(value)
+}
+
+# Create database connection pool with secure configuration
 create_db_pool <- function() {
   tryCatch({
-    # Get environment variables with defaults
-    db_host <- Sys.getenv("DB_HOST", "")
-    db_port <- as.integer(Sys.getenv("DB_PORT", ""))
-    db_name <- Sys.getenv("DB_NAME", "")
-    db_user <- Sys.getenv("DB_USER", "")
-    db_password <- Sys.getenv("DB_PASSWORD", "")
-    
-    # Check if required environment variables are set
-    if (any(c(db_host, db_name, db_user, db_password) == "")) {
-      stop("Required database environment variables are not set")
-    }
-    
-    cat("Connecting to Digital Ocean MySQL...\n")
-    cat("Host:", db_host, "\n")
-    cat("Port:", db_port, "\n")
-    cat("Database:", db_name, "\n")
-    cat("User:", db_user, "\n")
-    
-    # For Digital Ocean MySQL, try different SSL configurations
-    # For Digital Ocean MySQL, try different SSL configurations
+    # Get ALL credentials from environment variables - NEVER hardcode
+    db_host <- get_required_env("DB_HOST")
+    db_port <- as.integer(get_required_env("DB_PORT", "3306"))
+    db_name <- get_required_env("DB_NAME")
+    db_user <- get_required_env("DB_USER")
+    db_password <- get_required_env("DB_PASSWORD")
+
+    # Optional: SSL CA certificate path for verified connections
+    db_ssl_ca <- Sys.getenv("DB_SSL_CA_PATH", "")
+
+    # Log connection attempt (without sensitive data)
+    message("Connecting to database...")
+    message("Host: ", db_host)
+    message("Port: ", db_port)
+    message("Database: ", db_name)
+    message("User: ", db_user)
+    # NEVER log passwords
+
+    # SSL Configuration - prefer secure settings
+    # In production, use VERIFY_IDENTITY with CA certificate
     ssl_configs <- list(
-      # Configuration 1: Standard SSL with server certificate verification disabled
-      list(ssl.mode = "REQUIRED", ssl.verify.server.cert = FALSE),
-      # Configuration 2: SSL disabled (only if SSL is not required)
-      list(ssl.mode = "DISABLED"),
-      # Configuration 3: SSL with minimal verification
-      list(ssl.mode = "PREFERRED", ssl.verify.server.cert = FALSE)
+      # Configuration 1: Full SSL verification (RECOMMENDED for production)
+      if (db_ssl_ca != "") {
+        list(ssl.mode = "VERIFY_CA", ssl.ca = db_ssl_ca)
+      } else {
+        NULL
+      },
+      # Configuration 2: SSL required but no verification (acceptable for private networks)
+      list(ssl.mode = "REQUIRED"),
+      # Configuration 3: SSL preferred (fallback only)
+      list(ssl.mode = "PREFERRED")
     )
-    
+
+    # Remove NULL configurations
+    ssl_configs <- Filter(Negate(is.null), ssl_configs)
+
     pool <- NULL
     last_error <- NULL
-    
+
     for (i in seq_along(ssl_configs)) {
-      cat("Trying SSL configuration", i, "\n")
-      
+      message("Trying SSL configuration ", i)
+
       try_config <- ssl_configs[[i]]
-      
+
       pool <- tryCatch({
-        dbPool(
+        pool_args <- list(
           drv = RMariaDB::MariaDB(),
           host = db_host,
           port = db_port,
@@ -98,21 +143,25 @@ create_db_pool <- function() {
           user = db_user,
           password = db_password,
           ssl.mode = try_config$ssl.mode,
-          ssl.verify.server.cert = try_config$ssl.verify.server.cert,
-          # Additional connection parameters for stability
           timeout = 60,
           reconnect = TRUE,
-          # Connection pool settings
           minSize = 1,
           maxSize = 10,
           idleTimeout = 300000
         )
+
+        # Add SSL CA if specified
+        if (!is.null(try_config$ssl.ca)) {
+          pool_args$ssl.ca <- try_config$ssl.ca
+        }
+
+        do.call(dbPool, pool_args)
       }, error = function(e) {
-        last_error <- e
-        cat("Configuration", i, "failed:", e$message, "\n")
+        last_error <<- e
+        message("Configuration ", i, " failed: ", e$message)
         return(NULL)
       })
-      
+
       # Test the connection
       if (!is.null(pool)) {
         test_result <- tryCatch({
@@ -121,43 +170,41 @@ create_db_pool <- function() {
           poolReturn(conn)
           TRUE
         }, error = function(e) {
-          cat("Connection test failed:", e$message, "\n")
+          message("Connection test failed: ", e$message)
           if (!is.null(pool)) poolClose(pool)
           FALSE
         })
-        
+
         if (test_result) {
-          cat("Successfully connected with configuration", i, "\n")
+          message("Successfully connected with configuration ", i)
           return(pool)
         }
       }
     }
-    
+
     # If all configurations failed, throw the last error
-    stop(paste("Failed to connect to database. Last error:", last_error$message))
-    
+    stop(paste("Failed to connect to database. Last error:",
+               if (!is.null(last_error)) last_error$message else "Unknown error"))
+
   }, error = function(e) {
-    cat("Database connection error:", e$message, "\n")
-    # Return NULL to allow app to start with limited functionality
-    return(NULL)
+    message("Database connection error: ", e$message)
+    stop(e)  # Fail securely - don't start app without database
   })
 }
 
-# Create the database pool
-USE_LOCAL_DB <- TRUE   # switch to FALSE for DigitalOcean
+# Create the database pool using environment variables ONLY
+# Set USE_LOCAL_DB=true in environment for local development
+USE_LOCAL_DB <- tolower(Sys.getenv("USE_LOCAL_DB", "false")) == "true"
 
-if (USE_LOCAL_DB) {
-  pool <- dbPool(
-    drv      = RMariaDB::MariaDB(),
-    dbname   = "teacher_query_7",
-    host     = "127.0.0.1",
-    port     = 3306,
-    user     = "root",
-    password = "Naayelah2021@"
-  )
-} else {
-  pool <- create_db_pool()
-}
+pool <- tryCatch({
+  create_db_pool()
+}, error = function(e) {
+  message("CRITICAL: Failed to create database connection pool: ", e$message)
+  message("Please ensure all required environment variables are set:")
+  message("  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD")
+  message("Optional: DB_SSL_CA_PATH for SSL certificate verification")
+  stop("Cannot start application without database connection")
+})
 
 onStop(function() {
   try(poolClose(pool), silent = TRUE)
@@ -2375,9 +2422,110 @@ server <- function(input, output, session) {
     last_escalated_case = NULL,  # Store escalated case for popup
     quick_response_text = "",  # Store quick response text for templates
     first_time_login = FALSE,  # Track if this is user's first login
-    show_password_change = FALSE  # Track if password change modal should show
+    show_password_change = FALSE,  # Track if password change modal should show
+    last_activity = NULL  # SECURITY: Track last user activity for session timeout
   )
-  
+
+  # =============================================================================
+  # SECURITY: Rate Limiting for Login Attempts
+  # Prevents brute-force password attacks
+  # =============================================================================
+  login_attempts <- reactiveVal(list())
+  RATE_LIMIT_MAX_ATTEMPTS <- 5      # Maximum attempts allowed
+  RATE_LIMIT_WINDOW_SECONDS <- 900  # 15 minutes window
+
+  # Function to check if login is rate limited
+  is_rate_limited <- function(email) {
+    attempts <- login_attempts()
+    current_time <- as.numeric(Sys.time())
+
+    # Clean up old attempts for this email
+    user_attempts <- attempts[[email]]
+    if (!is.null(user_attempts)) {
+      # Keep only recent attempts within the window
+      recent_attempts <- user_attempts[user_attempts > (current_time - RATE_LIMIT_WINDOW_SECONDS)]
+      if (length(recent_attempts) >= RATE_LIMIT_MAX_ATTEMPTS) {
+        return(TRUE)
+      }
+    }
+    return(FALSE)
+  }
+
+  # Function to record a login attempt
+  record_login_attempt <- function(email) {
+    attempts <- login_attempts()
+    current_time <- as.numeric(Sys.time())
+
+    # Clean up old attempts and add new one
+    user_attempts <- attempts[[email]]
+    if (!is.null(user_attempts)) {
+      user_attempts <- user_attempts[user_attempts > (current_time - RATE_LIMIT_WINDOW_SECONDS)]
+    } else {
+      user_attempts <- c()
+    }
+    user_attempts <- c(user_attempts, current_time)
+    attempts[[email]] <- user_attempts
+    login_attempts(attempts)
+  }
+
+  # Function to clear rate limit on successful login
+  clear_rate_limit <- function(email) {
+    attempts <- login_attempts()
+    attempts[[email]] <- NULL
+    login_attempts(attempts)
+  }
+
+  # =============================================================================
+  # SECURITY: Session Timeout for Idle Users
+  # Automatically logs out users after 30 minutes of inactivity
+  # =============================================================================
+  SESSION_TIMEOUT_MINUTES <- 30
+
+  # Update last activity on any user interaction
+  observe({
+    # This triggers on any input change
+    reactiveValuesToList(input)
+    if (isTRUE(rv$logged_in)) {
+      rv$last_activity <- Sys.time()
+    }
+  })
+
+  # Check for session timeout periodically
+  observe({
+    invalidateLater(60000)  # Check every minute
+
+    if (isTRUE(rv$logged_in) && !is.null(rv$last_activity)) {
+      idle_time <- difftime(Sys.time(), rv$last_activity, units = "mins")
+      if (idle_time > SESSION_TIMEOUT_MINUTES) {
+        # Log the timeout
+        if (!is.null(rv$user)) {
+          tryCatch({
+            log_activity(pool, rv$user$user_id, "Session Timeout", "Auto-logout after idle timeout")
+          }, error = function(e) {})
+        }
+
+        # Clear session
+        rv$logged_in <- FALSE
+        rv$user <- NULL
+        rv$first_time_login <- FALSE
+        rv$show_password_change <- FALSE
+        rv$last_activity <- NULL
+        rv$page_state <- "landing"
+
+        # Clear sensitive inputs
+        updateTextInput(session, "login_email", value = "")
+        updateTextInput(session, "login_password", value = "")
+        shinyjs::hide("password_change_overlay")
+
+        showNotification(
+          "Your session has expired due to inactivity. Please log in again.",
+          type = "warning",
+          duration = 10
+        )
+      }
+    }
+  })
+
   # --- Landing page button handlers ---
   observeEvent(input$landing_login_btn, { rv$page_state <- "login" })
   observeEvent(input$hero_login_btn, { rv$page_state <- "login" })
@@ -2457,14 +2605,35 @@ server <- function(input, output, session) {
   can_see_all_regions <- function(role) {
     role %in% c("National Admin", "National Resolver")
   }
-  
-  # Log activity helper
+
+  # SECURITY: Helper function to get client IP address
+  get_client_ip <- function() {
+    tryCatch({
+      # Try to get IP from X-Forwarded-For header (for proxied connections)
+      xff <- session$request$HTTP_X_FORWARDED_FOR
+      if (!is.null(xff) && nchar(xff) > 0) {
+        # X-Forwarded-For may contain multiple IPs; take the first one
+        return(trimws(strsplit(xff, ",")[[1]][1]))
+      }
+      # Fall back to REMOTE_ADDR
+      remote_addr <- session$request$REMOTE_ADDR
+      if (!is.null(remote_addr) && nchar(remote_addr) > 0) {
+        return(remote_addr)
+      }
+      return("unknown")
+    }, error = function(e) {
+      return("unknown")
+    })
+  }
+
+  # Log activity helper with IP address capture
   log_activity <- function(conn, user_id, action, details = NULL) {
     tryCatch({
+      client_ip <- get_client_ip()
       DBI::dbExecute(conn,
-                     "INSERT INTO login_audit (email, user_id, success, reason)
-         VALUES ((SELECT email FROM users WHERE user_id = ?), ?, 1, ?)",
-                     params = list(user_id, user_id, paste0("ACTION: ", action, if (!is.null(details)) paste0(" | ", details) else ""))
+                     "INSERT INTO login_audit (email, user_id, success, reason, ip_address)
+         VALUES ((SELECT email FROM users WHERE user_id = ?), ?, 1, ?, ?)",
+                     params = list(user_id, user_id, paste0("ACTION: ", action, if (!is.null(details)) paste0(" | ", details) else ""), client_ip)
       )
     }, error = function(e) {
       # Silently fail on activity logging errors
@@ -2475,45 +2644,60 @@ server <- function(input, output, session) {
     req(input$login_email, input$login_password)
     email <- trimws(tolower(input$login_email))
     pwd <- input$login_password
-    
+
+    # SECURITY: Check rate limit before processing login
+    if (is_rate_limited(email)) {
+      output$login_msg <- renderText("Too many failed attempts. Please try again in 15 minutes.")
+      return()
+    }
+
+    # SECURITY: Capture client IP address for audit logging
+    client_ip <- get_client_ip()
+
     tryCatch({
       poolWithTransaction(pool, function(conn) {
-        
+
         if (!is_allowlisted(conn, email)) {
+          record_login_attempt(email)  # SECURITY: Record failed attempt
           try(DBI::dbExecute(conn,
-                             "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-                             params = list(email, "Email not allowlisted or inactive")
+                             "INSERT INTO login_audit (email, success, reason, ip_address) VALUES (?, 0, ?, ?)",
+                             params = list(email, "Email not allowlisted or inactive", client_ip)
           ), silent = TRUE)
           output$login_msg <- renderText("Access denied. Email not authorized.")
           return()
         }
-        
+
         u <- get_user_by_email(conn, email)
         if (nrow(u) == 0 || !isTRUE(u$is_active[1] == 1)) {
+          record_login_attempt(email)  # SECURITY: Record failed attempt
           try(DBI::dbExecute(conn,
-                             "INSERT INTO login_audit (email, success, reason) VALUES (?, 0, ?)",
-                             params = list(email, "User missing or inactive")
+                             "INSERT INTO login_audit (email, success, reason, ip_address) VALUES (?, 0, ?, ?)",
+                             params = list(email, "User missing or inactive", client_ip)
           ), silent = TRUE)
           output$login_msg <- renderText("Account not available.")
           return()
         }
-        
+
         ok <- FALSE
         try({ ok <- bcrypt::checkpw(pwd, u$password_hash[1]) }, silent = TRUE)
-        
+
         if (!isTRUE(ok)) {
+          record_login_attempt(email)  # SECURITY: Record failed attempt
           try(DBI::dbExecute(conn,
-                             "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 0, ?)",
-                             params = list(email, u$user_id[1], "Invalid password")
+                             "INSERT INTO login_audit (email, user_id, success, reason, ip_address) VALUES (?, ?, 0, ?, ?)",
+                             params = list(email, u$user_id[1], "Invalid password", client_ip)
           ), silent = TRUE)
           output$login_msg <- renderText("Invalid credentials.")
           return()
         }
-        
-        # Successful login
+
+        # SECURITY: Clear rate limit on successful login
+        clear_rate_limit(email)
+
+        # Successful login - log with IP address
         try(DBI::dbExecute(conn,
-                           "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Login successful')",
-                           params = list(email, u$user_id[1])
+                           "INSERT INTO login_audit (email, user_id, success, reason, ip_address) VALUES (?, ?, 1, 'Login successful', ?)",
+                           params = list(email, u$user_id[1], client_ip)
         ), silent = TRUE)
 
         # Check if this is a first-time login (last_login is NULL)
@@ -2528,6 +2712,7 @@ server <- function(input, output, session) {
         rv$logged_in <- TRUE
         rv$user <- u[1, ]
         rv$first_time_login <- is_first_login
+        rv$last_activity <- Sys.time()  # SECURITY: Initialize session activity timer
         output$login_msg <- renderText("")
 
         # If first-time login, show password change modal
@@ -2547,16 +2732,21 @@ server <- function(input, output, session) {
           tryCatch({
             user_region <- if (can_see_all_regions(u$role[1])) NULL else u$region_id[1]
 
-            overdue_query <- "
-              SELECT COUNT(*) as count FROM follow_ups f
-              JOIN tickets t ON f.ticket_id = t.ticket_id
-              WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
-
+            # SECURITY FIX: Use parameterized query to prevent SQL injection
             if (!is.null(user_region)) {
-              overdue_query <- paste0(overdue_query, " AND t.region_id = ", user_region)
+              overdue_query <- "
+                SELECT COUNT(*) as count FROM follow_ups f
+                JOIN tickets t ON f.ticket_id = t.ticket_id
+                WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()
+                AND t.region_id = ?"
+              overdue_count <- dbGetQuery(conn, overdue_query, params = list(user_region))$count
+            } else {
+              overdue_query <- "
+                SELECT COUNT(*) as count FROM follow_ups f
+                JOIN tickets t ON f.ticket_id = t.ticket_id
+                WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
+              overdue_count <- dbGetQuery(conn, overdue_query)$count
             }
-
-            overdue_count <- dbGetQuery(conn, overdue_query)$count
 
             if (overdue_count > 0) {
               showNotification(
@@ -2646,9 +2836,11 @@ server <- function(input, output, session) {
   })
 
   # Password validation function
+  # SECURITY: Enhanced password validation with stronger requirements
   validate_password <- function(password) {
-    if (nchar(password) < 8) {
-      return(list(valid = FALSE, msg = "Password must be at least 8 characters long."))
+    # Minimum length increased to 12 characters for better security
+    if (nchar(password) < 12) {
+      return(list(valid = FALSE, msg = "Password must be at least 12 characters long."))
     }
     if (!grepl("[A-Z]", password)) {
       return(list(valid = FALSE, msg = "Password must contain at least one uppercase letter."))
@@ -2658,6 +2850,15 @@ server <- function(input, output, session) {
     }
     if (!grepl("[0-9]", password)) {
       return(list(valid = FALSE, msg = "Password must contain at least one number."))
+    }
+    # SECURITY: Added special character requirement
+    if (!grepl("[!@#$%^&*(),.?\":{}|<>\\-_=+\\[\\]\\\\;'/~`]", password)) {
+      return(list(valid = FALSE, msg = "Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>-_=+[];'/~`)."))
+    }
+    # SECURITY: Check for common weak passwords
+    common_passwords <- c("password", "123456", "qwerty", "admin", "letmein", "welcome")
+    if (tolower(password) %in% common_passwords) {
+      return(list(valid = FALSE, msg = "Password is too common. Please choose a more unique password."))
     }
     return(list(valid = TRUE, msg = ""))
   }
@@ -3316,20 +3517,24 @@ server <- function(input, output, session) {
   )
   
   # ENHANCED: Render data tables with clickable case codes
+  # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$recent_cases_table <- DT::renderDataTable({
     data <- recent_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No recent cases"))
-    
+
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, category_name, priority, status) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
-        priority = paste0('<span class="priority-', tolower(priority), '">', priority, '</span>'),
-        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", status)), '">', status, '</span>')
+        # SECURITY: Escape user-controlled data before rendering as HTML
+        teacher_name = escape_html_vec(teacher_name),
+        category_name = escape_html_vec(category_name),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
+        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id)
-    
+
     DT::datatable(display_data,
                   options = list(
                     pageLength = 10,
@@ -3345,18 +3550,22 @@ server <- function(input, output, session) {
   output$my_cases_table <- DT::renderDataTable({
     data <- my_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-    
+
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, category_name, priority, status, hours_open) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
-        priority = paste0('<span class="priority-', tolower(priority), '">', priority, '</span>'),
-        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", status)), '">', status, '</span>'),
+        # SECURITY: Escape user-controlled data before rendering as HTML
+        teacher_name = escape_html_vec(teacher_name),
+        school_name = escape_html_vec(school_name),
+        category_name = escape_html_vec(category_name),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
+        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>'),
         hours_open = paste(round(as.numeric(hours_open)), "hours")
       ) %>%
       select(-ticket_id)
-    
+
     DT::datatable(display_data,
                   options = list(
                     pageLength = 15,
@@ -3372,17 +3581,22 @@ server <- function(input, output, session) {
   output$all_cases_table <- DT::renderDataTable({
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-    
+
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
-        priority = paste0('<span class="priority-', tolower(priority), '">', priority, '</span>'),
-        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", status)), '">', status, '</span>')
+        # SECURITY: Escape user-controlled data before rendering as HTML
+        teacher_name = escape_html_vec(teacher_name),
+        school_name = escape_html_vec(school_name),
+        district = escape_html_vec(district),
+        category_name = escape_html_vec(category_name),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
+        status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id)
-    
+
     DT::datatable(display_data,
                   options = list(
                     pageLength = 20,
@@ -4467,6 +4681,7 @@ server <- function(input, output, session) {
   })
 
   # Escalated cases table
+  # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$escalated_cases_table <- DT::renderDataTable({
     data <- escalated_cases_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No escalated cases")))
@@ -4474,8 +4689,13 @@ server <- function(input, output, session) {
     display_data <- data %>%
       mutate(
         escalated_at = format(as.POSIXct(escalated_at), "%Y-%m-%d %H:%M"),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
-        priority = paste0('<span class="priority-', tolower(priority), '">', priority, '</span>'),
+        # SECURITY: Escape user-controlled data before rendering as HTML
+        teacher_name = escape_html_vec(teacher_name),
+        region_name = escape_html_vec(region_name),
+        category_name = escape_html_vec(category_name),
+        summary = escape_html_vec(summary),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         hours_since_escalation = paste(hours_since_escalation, "hours ago")
       ) %>%
       select(case_code, escalated_at, teacher_name, region_name, category_name, priority, hours_since_escalation, summary)
@@ -4551,31 +4771,46 @@ server <- function(input, output, session) {
     forced_region <- user_region_id()  # Get user's region restriction
 
     tryCatch({
-      # Build query with optional region filter
-      base_query <- "
-        SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
-               t.teacher_phone, t.status as ticket_status, r.region_name,
-               r.region_id, c.category_name, f.follow_up_date, f.follow_up_notes,
-               f.status as follow_up_status,
-               CASE
-                 WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
-                 WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
-                 ELSE 'Upcoming'
-               END as urgency
-        FROM follow_ups f
-        JOIN tickets t ON f.ticket_id = t.ticket_id
-        LEFT JOIN regions r ON t.region_id = r.region_id
-        LEFT JOIN issue_categories c ON t.category_id = c.category_id
-        WHERE f.status = 'Pending'"
-
-      # Add region filter for regional users
+      # SECURITY FIX: Use parameterized query to prevent SQL injection
       if (!is.null(forced_region)) {
-        base_query <- paste0(base_query, " AND t.region_id = ", forced_region)
+        # Query with region filter using parameterized query
+        base_query <- "
+          SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
+                 t.teacher_phone, t.status as ticket_status, r.region_name,
+                 r.region_id, c.category_name, f.follow_up_date, f.follow_up_notes,
+                 f.status as follow_up_status,
+                 CASE
+                   WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
+                   WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
+                   ELSE 'Upcoming'
+                 END as urgency
+          FROM follow_ups f
+          JOIN tickets t ON f.ticket_id = t.ticket_id
+          LEFT JOIN regions r ON t.region_id = r.region_id
+          LEFT JOIN issue_categories c ON t.category_id = c.category_id
+          WHERE f.status = 'Pending' AND t.region_id = ?
+          ORDER BY f.follow_up_date ASC"
+        dbGetQuery(con(), base_query, params = list(forced_region))
+      } else {
+        # Query without region filter (for national users)
+        base_query <- "
+          SELECT f.follow_up_id, f.ticket_id, t.case_code, t.teacher_name,
+                 t.teacher_phone, t.status as ticket_status, r.region_name,
+                 r.region_id, c.category_name, f.follow_up_date, f.follow_up_notes,
+                 f.status as follow_up_status,
+                 CASE
+                   WHEN f.follow_up_date < CURDATE() THEN 'Overdue'
+                   WHEN f.follow_up_date = CURDATE() THEN 'Due Today'
+                   ELSE 'Upcoming'
+                 END as urgency
+          FROM follow_ups f
+          JOIN tickets t ON f.ticket_id = t.ticket_id
+          LEFT JOIN regions r ON t.region_id = r.region_id
+          LEFT JOIN issue_categories c ON t.category_id = c.category_id
+          WHERE f.status = 'Pending'
+          ORDER BY f.follow_up_date ASC"
+        dbGetQuery(con(), base_query)
       }
-
-      base_query <- paste0(base_query, " ORDER BY f.follow_up_date ASC")
-
-      dbGetQuery(con(), base_query)
     }, error = function(e) {
       data.frame()
     })
@@ -4646,6 +4881,7 @@ server <- function(input, output, session) {
   })
 
   # Pending follow-ups table with complete action
+  # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$pending_followups_table <- DT::renderDataTable({
     data <- follow_ups_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No pending follow-ups")))
@@ -4661,7 +4897,11 @@ server <- function(input, output, session) {
 
     display_data <- data %>%
       mutate(
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', case_code, '</span>'),
+        # SECURITY: Escape user-controlled data before rendering as HTML
+        teacher_name = escape_html_vec(teacher_name),
+        region_name = escape_html_vec(region_name),
+        follow_up_notes = escape_html_vec(follow_up_notes),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
         urgency = case_when(
           urgency == "Overdue" ~ '<span class="badge" style="background:#dc2626;color:white;">Overdue</span>',
           urgency == "Due Today" ~ '<span class="badge" style="background:#f59e0b;color:white;">Due Today</span>',
