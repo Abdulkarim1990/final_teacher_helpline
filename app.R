@@ -3529,7 +3529,7 @@ server <- function(input, output, session) {
         # SECURITY: Escape user-controlled data before rendering as HTML
         teacher_name = escape_html_vec(teacher_name),
         category_name = escape_html_vec(category_name),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
@@ -3559,7 +3559,7 @@ server <- function(input, output, session) {
         teacher_name = escape_html_vec(teacher_name),
         school_name = escape_html_vec(school_name),
         category_name = escape_html_vec(category_name),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>'),
         hours_open = paste(round(as.numeric(hours_open)), "hours")
@@ -3591,7 +3591,7 @@ server <- function(input, output, session) {
         school_name = escape_html_vec(school_name),
         district = escape_html_vec(district),
         category_name = escape_html_vec(category_name),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
@@ -4694,7 +4694,7 @@ server <- function(input, output, session) {
         region_name = escape_html_vec(region_name),
         category_name = escape_html_vec(category_name),
         summary = escape_html_vec(summary),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         hours_since_escalation = paste(hours_since_escalation, "hours ago")
       ) %>%
@@ -4901,7 +4901,7 @@ server <- function(input, output, session) {
         teacher_name = escape_html_vec(teacher_name),
         region_name = escape_html_vec(region_name),
         follow_up_notes = escape_html_vec(follow_up_notes),
-        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ');">', escape_html_vec(case_code), '</span>'),
+        case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         urgency = case_when(
           urgency == "Overdue" ~ '<span class="badge" style="background:#dc2626;color:white;">Overdue</span>',
           urgency == "Due Today" ~ '<span class="badge" style="background:#f59e0b;color:white;">Due Today</span>',
