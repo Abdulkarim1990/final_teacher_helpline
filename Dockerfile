@@ -1,11 +1,11 @@
 FROM rocker/shiny:4.3.2
 
-# Install system libraries commonly needed by R packages
+# Install system libraries commonly needed by R packages (MySQL version)
 RUN apt-get update && apt-get install -y \
   libcurl4-openssl-dev \
   libssl-dev \
   libxml2-dev \
-  libpq-dev \
+  default-libmysqlclient-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Install renv (safe even if you do not use it)
