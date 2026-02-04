@@ -92,7 +92,7 @@ create_db_pool <- function() {
   tryCatch({
     # Get ALL credentials from environment variables - NEVER hardcode
     db_host <- get_required_env("DB_HOST")
-    db_port <- as.integer(get_required_env("DB_PORT", "3306"))
+    db_port <- as.integer(get_required_env("DB_PORT"))
     db_name <- get_required_env("DB_NAME")
     db_user <- get_required_env("DB_USER")
     db_password <- get_required_env("DB_PASSWORD")
