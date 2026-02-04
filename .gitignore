@@ -1,69 +1,7 @@
-# =============================================================================
-# GES Teacher Support Helpline - Git Ignore Configuration
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Security-Sensitive Files (NEVER commit these!)
-# -----------------------------------------------------------------------------
-# Environment files containing credentials
-.env
-.env.local
-.env.production
-.env.*.local
-
-# SSL certificates and keys
-*.pem
-*.key
-*.crt
-*.p12
-*.pfx
-
-# Credentials and secrets
-credentials.json
-secrets.json
-*.secret
-
-# -----------------------------------------------------------------------------
-# R/Shiny Project Files
-# -----------------------------------------------------------------------------
-# R session data
-.Rhistory
-.RData
-.Rproj.user/
-
-# Shiny app files
-*.rds
-rsconnect/
-
-# Package installation
-packrat/
-renv/
-
-# -----------------------------------------------------------------------------
-# IDE and Editor Files
-# -----------------------------------------------------------------------------
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-
-# -----------------------------------------------------------------------------
-# Temporary and Cache Files
-# -----------------------------------------------------------------------------
-tmp/
-temp/
-cache/
-*.tmp
-*.temp
-*.log
-
-# -----------------------------------------------------------------------------
-# Build and Output Files
-# -----------------------------------------------------------------------------
-*.xlsx
-*.csv
-output/
-exports/
+library/
+local/
+cellar/
+lock/
+python/
+sandbox/
+staging/
