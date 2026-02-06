@@ -1,24 +1,24 @@
 FROM rocker/shiny:4.3.2
 
-# System libraries needed by common R packages (incl. MySQL)
 RUN apt-get update && apt-get install -y \
   libcurl4-openssl-dev \
   libssl-dev \
   libxml2-dev \
-  libmysqlclient-dev \
+  default-libmysqlclient-dev \
   && rm -rf /var/lib/apt/lists/*
 
-# Install renv
 RUN R -e "install.packages('renv', repos='https://cloud.r-project.org')"
 
-# Set working directory for Shiny
 WORKDIR /srv/shiny-server/app
 
-# Copy app files (including renv/)
-COPY . .
+# Copy lockfile + renv settings first (better caching)
+COPY renv.lock ./
+COPY settings.json ./
 
-# Restore R packages from renv.lock
+# Restore packages into the project library
 RUN R -e "renv::restore(prompt = FALSE)"
 
-# Expose Shiny port
+# Copy the rest of the app
+COPY . .
+
 EXPOSE 3838
