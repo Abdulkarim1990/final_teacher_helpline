@@ -14,12 +14,9 @@ WORKDIR /srv/shiny-server/app
 
 # Copy lockfile + renv settings first (better caching)
 COPY renv.lock ./
-COPY settings.json ./
-
-# Restore packages into the project library
+COPY renv/settings.json renv/settings.json
 RUN R -e "renv::restore(prompt = FALSE)"
-
-# Copy the rest of the app
 COPY . .
+
 
 EXPOSE 3838
