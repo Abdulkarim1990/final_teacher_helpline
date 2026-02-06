@@ -20,6 +20,9 @@ RUN R -e "renv::restore(prompt = FALSE)"
 # Copy the rest of the app
 COPY . .
 
+COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
+
+
 # Ensure renv library path exists and is writable by the shiny user
 RUN mkdir -p /srv/shiny-server/app/renv/library/linux-ubuntu-noble/R-4.5/x86_64-pc-linux-gnu && \
     chown -R shiny:shiny /srv/shiny-server/app
