@@ -2,6 +2,14 @@
 # Enhanced Version with Case Details Management
 # Configured for Digital Ocean MySQL hosting
 
+# Ensure renv packages are used when running on Shiny Server
+if (file.exists("renv/activate.R")) {
+  source("renv/activate.R")
+} else {
+  message("renv/activate.R not found; using system library paths.")
+}
+
+
 library(shiny)
 library(shinydashboard)
 library(DT)
