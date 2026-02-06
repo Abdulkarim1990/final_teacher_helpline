@@ -18,5 +18,10 @@ COPY renv/settings.json renv/settings.json
 RUN R -e "renv::restore(prompt = FALSE)"
 COPY . .
 
+# Ensure renv library path exists and is writable by the shiny user
+RUN mkdir -p /srv/shiny-server/app/renv/library && \
+    chown -R shiny:shiny /srv/shiny-server/app
+
+
 
 EXPOSE 3838
