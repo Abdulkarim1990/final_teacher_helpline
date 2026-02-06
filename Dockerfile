@@ -1,6 +1,5 @@
 FROM rocker/shiny:4.5.1
 
-
 RUN apt-get update && apt-get install -y \
   libcurl4-openssl-dev \
   libssl-dev \
@@ -12,16 +11,17 @@ RUN R -e "install.packages('renv', repos='https://cloud.r-project.org')"
 
 WORKDIR /srv/shiny-server/app
 
-# Copy lockfile + renv settings first (better caching)
+# Copy lockfile + renv folder first (better caching)
 COPY renv.lock ./
-COPY renv/settings.json renv/settings.json
+COPY renv/ renv/
+
 RUN R -e "renv::restore(prompt = FALSE)"
+
+# Copy the rest of the app
 COPY . .
 
 # Ensure renv library path exists and is writable by the shiny user
-RUN mkdir -p /srv/shiny-server/app/renv/library && \
+RUN mkdir -p /srv/shiny-server/app/renv/library/linux-ubuntu-noble/R-4.5/x86_64-pc-linux-gnu && \
     chown -R shiny:shiny /srv/shiny-server/app
-
-
 
 EXPOSE 3838
