@@ -774,44 +774,57 @@ add_case_note <- function(pool_conn, ticket_id, note_text, user_id = NULL) {
 }
 
 # Insert ticket function (from original code)
+# Supports both full and quick entry modes
 insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
-                          school_name, district, category_id, subcategory_id = NULL, priority, summary, description = NULL) {
+                          school_name, district, category_id, subcategory_id = NULL, priority, summary, description = NULL,
+                          entry_mode = "full", quick_outcome = NULL, status = "New") {
   if (is.null(con)) {
     showNotification("Database connection not available", type = "error")
     return(FALSE)
   }
-  
+
   tryCatch({
     current_year <- year(Sys.Date())
     timestamp_id <- as.integer(as.numeric(Sys.time()) %% 1000000)
     case_code <- sprintf("GES-%d-%06d", current_year, timestamp_id)
-    
+
+    teacher_name <- if (is.null(teacher_name) || teacher_name == "") NA else teacher_name
+    teacher_phone <- if (is.null(teacher_phone) || teacher_phone == "") NA else teacher_phone
     teacher_staff_id <- if (is.null(teacher_staff_id) || teacher_staff_id == "") "" else teacher_staff_id
     school_name <- if (is.null(school_name) || school_name == "") "" else school_name
     district <- if (is.null(district) || district == "") "" else district
     description <- if (is.null(description) || description == "") "" else description
-    
-    query <- "
+    quick_outcome <- if (is.null(quick_outcome) || quick_outcome == "") NA else quick_outcome
+
+    # Set resolved_at for quick entries that are immediately resolved
+    resolved_at_val <- if (entry_mode == "quick" && status == "Resolved") "NOW()" else "NULL"
+
+    query <- paste0("
       INSERT INTO tickets (
         case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
         school_name, district, category_id, subcategory_id, priority, status, summary, description,
-        created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'New', ?, ?, NOW())
-    "
-    
+        entry_mode, quick_outcome, resolved_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ", resolved_at_val, ", NOW())
+    ")
+
     rows_affected <- dbExecute(con, query, params = list(
       case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
-      school_name, district, category_id, subcategory_id, priority, summary, description
+      school_name, district, category_id, subcategory_id, priority, status, summary, description,
+      entry_mode, quick_outcome
     ))
-    
+
     if (rows_affected > 0) {
-      showNotification(paste("Case", case_code, "created successfully!"), type = "message")
+      if (entry_mode == "quick") {
+        showNotification(paste("Quick entry logged!", case_code), type = "message", duration = 3)
+      } else {
+        showNotification(paste("Case", case_code, "created successfully!"), type = "message")
+      }
       return(TRUE)
     } else {
       showNotification("Failed to create case - no rows affected", type = "error")
       return(FALSE)
     }
-    
+
   }, error = function(e) {
     showNotification(paste("Error saving ticket:", e$message), type = "error")
     return(FALSE)
@@ -829,7 +842,8 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_
              c.category_name, s.subcategory_name, t.teacher_name, t.teacher_phone, t.teacher_staff_id,
              t.school_name, t.district, t.summary, t.description,
              t.first_response_at, t.resolved_at, t.closed_at,
-             TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, NOW())) as hours_open
+             TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, NOW())) as hours_open,
+             COALESCE(t.entry_mode, 'full') as entry_mode
       FROM tickets t
       LEFT JOIN issue_categories c ON c.category_id = t.category_id
       LEFT JOIN issue_subcategories s ON s.subcategory_id = t.subcategory_id
@@ -2126,71 +2140,165 @@ ui <- tagList(
                 )
               ),
               
-              # New Case Tab (unchanged from original)
+              # New Case Tab - with Quick Entry / Full Case toggle
               tabItem(
                 tabName = "new_case",
                 fluidRow(
                   box(
                     title = "Log New Teacher Support Case", status = "primary", solidHeader = TRUE,
                     width = 12,
-                    
-                    h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
-                    
-                    fluidRow(
-                      column(6,
-                             textInput("teacher_name", "Teacher/Caller Name *", 
-                                       placeholder = "Full name of person calling"),
-                             textInput("teacher_phone", "Contact Number *", 
-                                       placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
-                             textInput("teacher_staff_id", "Staff ID", 
-                                       placeholder = "Teacher staff ID (if available)")
+
+                    # Entry mode toggle
+                    div(style = "margin-bottom: 20px; padding: 10px; background: #f0f4f8; border-radius: 8px;",
+                      fluidRow(
+                        column(6,
+                          radioGroupButtons("entry_mode", label = NULL,
+                            choices = c("Full Case" = "full", "Quick Entry" = "quick"),
+                            selected = "full", justified = FALSE, size = "normal",
+                            status = "primary",
+                            checkIcon = list(yes = icon("check"))
+                          )
+                        ),
+                        column(6, style = "padding-top: 5px;",
+                          uiOutput("quick_entry_today_count")
+                        )
                       ),
-                      column(6,
-                             uiOutput("region_select_ui"),
-                             textInput("district", "District", placeholder = "District name"),
-                             textInput("school_name", "School Name", placeholder = "Name of school")
+                      tags$small(class = "text-muted",
+                        tags$b("Full Case:"), " For cases needing detailed tracking, follow-up, or escalation. ",
+                        tags$b("Quick Entry:"), " For routine cases resolved at the regional level — log the category and outcome only."
                       )
                     ),
-                    
-                    hr(),
-                    
-                    h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
-                    
-                    fluidRow(
-                      column(6,
-                             uiOutput("channel_select_ui"),
-                             uiOutput("category_select_ui"),
-                             uiOutput("subcategory_select_ui")
+
+                    # ===== FULL CASE FORM =====
+                    div(id = "full_case_form",
+                      h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
+
+                      fluidRow(
+                        column(6,
+                               textInput("teacher_name", "Teacher/Caller Name *",
+                                         placeholder = "Full name of person calling"),
+                               textInput("teacher_phone", "Contact Number *",
+                                         placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
+                               textInput("teacher_staff_id", "Staff ID",
+                                         placeholder = "Teacher staff ID (if available)")
+                        ),
+                        column(6,
+                               uiOutput("region_select_ui"),
+                               textInput("district", "District", placeholder = "District name"),
+                               textInput("school_name", "School Name", placeholder = "Name of school")
+                        )
                       ),
-                      column(6,
-                             selectInput("priority", "Priority Level *",
-                                         choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
-                                         selected = "Medium"),
-                             checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
+
+                      hr(),
+
+                      h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
+
+                      fluidRow(
+                        column(6,
+                               uiOutput("channel_select_ui"),
+                               uiOutput("category_select_ui"),
+                               uiOutput("subcategory_select_ui")
+                        ),
+                        column(6,
+                               selectInput("priority", "Priority Level *",
+                                           choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
+                                           selected = "Medium"),
+                               checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
+                        )
+                      ),
+
+                      fluidRow(
+                        column(12,
+                               textAreaInput("case_summary", "Case Summary *",
+                                             placeholder = "Brief summary of the issue (minimum 20 characters)...",
+                                             height = "100px"),
+                               textAreaInput("case_description", "Detailed Description",
+                                             placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
+                                             height = "120px")
+                        )
+                      ),
+
+                      hr(),
+
+                      fluidRow(
+                        column(12, align = "center",
+                               actionButton("save_case", "Create Case",
+                                            class = "btn-primary btn-lg",
+                                            style = "margin: 10px; padding: 10px 30px;"),
+                               actionButton("clear_form", "Clear Form",
+                                            class = "btn-default btn-lg",
+                                            style = "margin: 10px; padding: 10px 30px;")
+                        )
                       )
                     ),
-                    
-                    fluidRow(
-                      column(12,
-                             textAreaInput("case_summary", "Case Summary *", 
-                                           placeholder = "Brief summary of the issue (minimum 20 characters)...",
-                                           height = "100px"),
-                             textAreaInput("case_description", "Detailed Description", 
-                                           placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
-                                           height = "120px")
-                      )
-                    ),
-                    
-                    hr(),
-                    
-                    fluidRow(
-                      column(12, align = "center",
-                             actionButton("save_case", "Create Case", 
-                                          class = "btn-primary btn-lg", 
-                                          style = "margin: 10px; padding: 10px 30px;"),
-                             actionButton("clear_form", "Clear Form", 
-                                          class = "btn-default btn-lg",
-                                          style = "margin: 10px; padding: 10px 30px;")
+
+                    # ===== QUICK ENTRY FORM =====
+                    hidden(
+                      div(id = "quick_entry_form",
+                        div(style = "background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px;",
+                          h4("Quick Case Entry", style = "color: #16a085; margin: 0 0 5px 0;",
+                             icon("bolt")),
+                          p(style = "color: #555; margin: 0;",
+                            "Log routine cases that were handled at the regional level.",
+                            " Only channel, category, and outcome are required. Teacher details are optional.")
+                        ),
+
+                        fluidRow(
+                          column(3, uiOutput("quick_region_ui")),
+                          column(3, uiOutput("quick_channel_ui")),
+                          column(3, uiOutput("quick_category_ui")),
+                          column(3, uiOutput("quick_subcategory_ui"))
+                        ),
+
+                        fluidRow(
+                          column(4,
+                            selectInput("quick_outcome", "Outcome *",
+                              choices = c("Resolved" = "Resolved",
+                                          "Info Provided" = "Info Provided",
+                                          "Referred to District" = "Referred",
+                                          "Pending Follow-up" = "Pending"),
+                              selected = "Resolved")
+                          ),
+                          column(4,
+                            textInput("quick_teacher_name", "Teacher Name (optional)",
+                                      placeholder = "Name if available")
+                          ),
+                          column(4,
+                            textInput("quick_teacher_phone", "Contact Number (optional)",
+                                      placeholder = "+233XXXXXXXXX")
+                          )
+                        ),
+
+                        fluidRow(
+                          column(12,
+                            textAreaInput("quick_note", "Brief Note (optional)",
+                                          placeholder = "Short note about the case...",
+                                          height = "60px")
+                          )
+                        ),
+
+                        hr(),
+
+                        fluidRow(
+                          column(12, align = "center",
+                            actionButton("save_quick_case", "Log Quick Entry",
+                                         class = "btn-success btn-lg",
+                                         icon = icon("bolt"),
+                                         style = "margin: 10px; padding: 10px 30px;"),
+                            actionButton("switch_to_full", "Switch to Full Case",
+                                         class = "btn-default btn-lg",
+                                         icon = icon("expand"),
+                                         style = "margin: 10px; padding: 10px 30px;"),
+                            actionButton("clear_quick_form", "Clear",
+                                         class = "btn-default btn-lg",
+                                         style = "margin: 10px; padding: 10px 30px;")
+                          )
+                        ),
+
+                        hr(),
+
+                        # Today's quick entry summary
+                        uiOutput("quick_entry_summary")
                       )
                     )
                   )
@@ -3132,6 +3240,12 @@ server <- function(input, output, session) {
     req(input$category_id)
     get_subcategories(con(), input$category_id)
   })
+
+  # Quick entry subcategories (separate reactive for quick form's category select)
+  quick_subcategories <- reactive({
+    req(input$quick_category_id)
+    get_subcategories(con(), input$quick_category_id)
+  })
   
   # NEW: Selected case reactive for details view
   selected_case_id <- reactiveVal(NULL)
@@ -3185,6 +3299,55 @@ server <- function(input, output, session) {
     } else {
       selectInput("subcategory_id", "Issue Subcategory",
                   choices = c("Please select category first" = ""))
+    }
+  })
+
+  # Quick Entry form UI outputs
+  output$quick_region_ui <- renderUI({
+    regions_df <- regions()
+    forced_region <- user_region_id()
+    if (!is.null(forced_region)) {
+      region_row <- regions_df[regions_df$region_id == forced_region, ]
+      selectInput("quick_region", "Region *",
+                  choices = setNames(region_row$region_id, region_row$region_name),
+                  selected = forced_region)
+    } else {
+      default_sel <- if (!is.null(rv$user) && !is.null(rv$user$region_id)) rv$user$region_id else 1
+      selectInput("quick_region", "Region *",
+                  choices = setNames(regions_df$region_id, regions_df$region_name),
+                  selected = default_sel)
+    }
+  })
+
+  output$quick_channel_ui <- renderUI({
+    channels_df <- channels()
+    selectInput("quick_channel", "Contact Channel *",
+                choices = setNames(channels_df$channel_id, channels_df$channel_name),
+                selected = 1)
+  })
+
+  output$quick_category_ui <- renderUI({
+    cats <- categories()
+    if (nrow(cats) > 0) {
+      selectInput("quick_category_id", "Issue Category *",
+                  choices = c("Select category..." = "", setNames(cats$category_id, cats$category_name)))
+    } else {
+      selectInput("quick_category_id", "Issue Category *",
+                  choices = c("Loading categories..." = ""))
+    }
+  })
+
+  output$quick_subcategory_ui <- renderUI({
+    subcats <- quick_subcategories()
+    if (nrow(subcats) > 0) {
+      selectInput("quick_subcategory_id", "Subcategory",
+                  choices = c("(optional)" = "", setNames(subcats$subcategory_id, subcats$subcategory_name)))
+    } else if (!is.null(input$quick_category_id) && input$quick_category_id != "") {
+      selectInput("quick_subcategory_id", "Subcategory",
+                  choices = c("No subcategories" = ""))
+    } else {
+      selectInput("quick_subcategory_id", "Subcategory",
+                  choices = c("Select category first" = ""))
     }
   })
   
@@ -3450,6 +3613,198 @@ server <- function(input, output, session) {
     updateSelectInput(session, "category_id", selected = "")
     updateSelectInput(session, "priority", selected = "Medium")
   })
+
+  # ========================================
+  # Quick Entry Mode Logic
+  # ========================================
+
+  # Toggle between Full Case and Quick Entry forms
+  observeEvent(input$entry_mode, {
+    if (input$entry_mode == "quick") {
+      shinyjs::hide("full_case_form")
+      shinyjs::show("quick_entry_form")
+    } else {
+      shinyjs::show("full_case_form")
+      shinyjs::hide("quick_entry_form")
+    }
+  })
+
+  # Switch to Full Case button
+  observeEvent(input$switch_to_full, {
+    updateRadioGroupButtons(session, "entry_mode", selected = "full")
+  })
+
+  # Clear quick entry form
+  observeEvent(input$clear_quick_form, {
+    updateSelectInput(session, "quick_category_id", selected = "")
+    updateSelectInput(session, "quick_outcome", selected = "Resolved")
+    updateTextInput(session, "quick_teacher_name", value = "")
+    updateTextInput(session, "quick_teacher_phone", value = "")
+    updateTextAreaInput(session, "quick_note", value = "")
+  })
+
+  # Quick entry counter invalidator
+  quick_entry_invalidator <- reactiveVal(0)
+
+  # Save quick entry
+  observeEvent(input$save_quick_case, {
+    req(input$quick_category_id)
+
+    if (input$quick_category_id == "") {
+      showNotification("Please select a category", type = "warning")
+      return()
+    }
+
+    # Determine status based on outcome
+    outcome <- input$quick_outcome
+    status <- switch(outcome,
+      "Resolved" = "Resolved",
+      "Info Provided" = "Resolved",
+      "Referred" = "Resolved",
+      "Pending" = "In Progress",
+      "Resolved"
+    )
+
+    # Get category name for auto-generated summary
+    cats <- categories()
+    cat_name <- cats$category_name[cats$category_id == as.integer(input$quick_category_id)]
+    if (length(cat_name) == 0) cat_name <- "General"
+
+    # Build summary from outcome + optional note
+    note <- trimws(input$quick_note %or% "")
+    auto_summary <- if (nchar(note) >= 5) {
+      paste0("[Quick] ", cat_name, " - ", outcome, ": ", note)
+    } else {
+      paste0("[Quick] ", cat_name, " - ", outcome)
+    }
+
+    sub_id <- if (!is.null(input$quick_subcategory_id) && input$quick_subcategory_id != "") {
+      as.integer(input$quick_subcategory_id)
+    } else {
+      NULL
+    }
+
+    success <- insert_ticket(
+      con = con(),
+      region_id = input$quick_region %or% 1,
+      channel_id = input$quick_channel %or% 1,
+      teacher_name = input$quick_teacher_name,
+      teacher_phone = input$quick_teacher_phone,
+      teacher_staff_id = NULL,
+      school_name = NULL,
+      district = NULL,
+      category_id = as.integer(input$quick_category_id),
+      subcategory_id = sub_id,
+      priority = "Low",
+      summary = auto_summary,
+      description = NULL,
+      entry_mode = "quick",
+      quick_outcome = outcome,
+      status = status
+    )
+
+    if (success) {
+      uid <- current_user_id()
+      tryCatch({ log_activity(pool, uid, "Quick Entry", paste("Category:", cat_name, "| Outcome:", outcome)) }, error = function(e) {})
+      # Reset form for next quick entry (keep channel and category for batch logging)
+      updateSelectInput(session, "quick_outcome", selected = "Resolved")
+      updateTextInput(session, "quick_teacher_name", value = "")
+      updateTextInput(session, "quick_teacher_phone", value = "")
+      updateTextAreaInput(session, "quick_note", value = "")
+      # Trigger counter refresh
+      quick_entry_invalidator(quick_entry_invalidator() + 1)
+    }
+  })
+
+  # Today's quick entry count
+  output$quick_entry_today_count <- renderUI({
+    quick_entry_invalidator()
+    tryCatch({
+      forced_region <- user_region_id()
+      if (!is.null(forced_region)) {
+        count <- dbGetQuery(con(),
+          "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE() AND region_id = ?",
+          params = list(forced_region))$cnt
+      } else {
+        count <- dbGetQuery(con(),
+          "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE()")$cnt
+      }
+      if (count > 0) {
+        tags$span(style = "display: inline-block; padding: 6px 14px; background: #e8f5e9; border-radius: 20px; font-weight: 600; color: #2e7d32;",
+          icon("bolt"), paste(count, "quick entries today"))
+      } else {
+        NULL
+      }
+    }, error = function(e) NULL)
+  })
+
+  # Quick entry summary for today
+  output$quick_entry_summary <- renderUI({
+    quick_entry_invalidator()
+    tryCatch({
+      forced_region <- user_region_id()
+      if (!is.null(forced_region)) {
+        summary_data <- dbGetQuery(con(),
+          "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
+           FROM tickets t
+           LEFT JOIN issue_categories c ON t.category_id = c.category_id
+           WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE() AND t.region_id = ?
+           GROUP BY c.category_name, t.quick_outcome
+           ORDER BY cnt DESC",
+          params = list(forced_region))
+      } else {
+        summary_data <- dbGetQuery(con(),
+          "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
+           FROM tickets t
+           LEFT JOIN issue_categories c ON t.category_id = c.category_id
+           WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE()
+           GROUP BY c.category_name, t.quick_outcome
+           ORDER BY cnt DESC")
+      }
+
+      if (nrow(summary_data) == 0) {
+        div(style = "text-align: center; color: #999; padding: 10px;",
+            icon("info-circle"), " No quick entries logged today yet.")
+      } else {
+        total <- sum(summary_data$cnt)
+        resolved <- sum(summary_data$cnt[summary_data$quick_outcome %in% c("Resolved", "Info Provided", "Referred")])
+        pending <- sum(summary_data$cnt[summary_data$quick_outcome == "Pending"])
+
+        div(
+          h5("Today's Quick Entry Summary", style = "color: #1e3a8a;"),
+          fluidRow(
+            column(4, div(style = "text-align: center; padding: 10px; background: #e3f2fd; border-radius: 8px;",
+              h3(total, style = "margin: 0; color: #1565c0;"), tags$small("Total Logged"))),
+            column(4, div(style = "text-align: center; padding: 10px; background: #e8f5e9; border-radius: 8px;",
+              h3(resolved, style = "margin: 0; color: #2e7d32;"), tags$small("Resolved"))),
+            column(4, div(style = "text-align: center; padding: 10px; background: #fff3e0; border-radius: 8px;",
+              h3(pending, style = "margin: 0; color: #e65100;"), tags$small("Pending")))
+          ),
+          if (nrow(summary_data) > 0) {
+            div(style = "margin-top: 10px;",
+              tags$table(class = "table table-condensed table-sm",
+                style = "font-size: 0.9em;",
+                tags$thead(tags$tr(
+                  tags$th("Category"), tags$th("Outcome"), tags$th("Count")
+                )),
+                tags$tbody(
+                  lapply(1:nrow(summary_data), function(i) {
+                    tags$tr(
+                      tags$td(escape_html(summary_data$category_name[i])),
+                      tags$td(escape_html(summary_data$quick_outcome[i])),
+                      tags$td(tags$b(summary_data$cnt[i]))
+                    )
+                  })
+                )
+              )
+            )
+          }
+        )
+      }
+    }, error = function(e) {
+      div(style = "color: #999;", "Unable to load summary.")
+    })
+  })
   
   # Data tables with role-based region access control
   recent_cases_data <- reactive({
@@ -3517,7 +3872,7 @@ server <- function(input, output, session) {
       if (nrow(data) > 0) {
         export_data <- data %>%
           select(case_code, created_at, teacher_name, teacher_phone, teacher_staff_id,
-                 school_name, district, category_name, priority, status, summary, hours_open)
+                 school_name, district, category_name, priority, status, summary, hours_open, entry_mode)
         write.csv(export_data, file, row.names = FALSE)
       } else {
         write.csv(data.frame(Message = "No data to export"), file, row.names = FALSE)
@@ -3531,18 +3886,24 @@ server <- function(input, output, session) {
     data <- recent_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No recent cases"))
 
+    # Ensure entry_mode column exists (backwards compatibility)
+    if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
+
     display_data <- data %>%
-      select(ticket_id, case_code, created_at, teacher_name, category_name, priority, status) %>%
+      select(ticket_id, case_code, created_at, teacher_name, category_name, priority, status, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
-        teacher_name = escape_html_vec(teacher_name),
+        teacher_name = ifelse(entry_mode == "quick",
+          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+          escape_html_vec(teacher_name)),
         category_name = escape_html_vec(category_name),
         case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
-      select(-ticket_id)
+      select(-ticket_id, -entry_mode)
 
     DT::datatable(display_data,
                   options = list(
@@ -3560,12 +3921,18 @@ server <- function(input, output, session) {
     data <- my_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
 
+    # Ensure entry_mode column exists (backwards compatibility)
+    if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
+
     display_data <- data %>%
-      select(ticket_id, case_code, created_at, teacher_name, school_name, category_name, priority, status, hours_open) %>%
+      select(ticket_id, case_code, created_at, teacher_name, school_name, category_name, priority, status, hours_open, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
-        teacher_name = escape_html_vec(teacher_name),
+        teacher_name = ifelse(entry_mode == "quick",
+          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+          escape_html_vec(teacher_name)),
         school_name = escape_html_vec(school_name),
         category_name = escape_html_vec(category_name),
         case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
@@ -3573,7 +3940,7 @@ server <- function(input, output, session) {
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>'),
         hours_open = paste(round(as.numeric(hours_open)), "hours")
       ) %>%
-      select(-ticket_id)
+      select(-ticket_id, -entry_mode)
 
     DT::datatable(display_data,
                   options = list(
@@ -3591,12 +3958,18 @@ server <- function(input, output, session) {
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
 
+    # Ensure entry_mode column exists (backwards compatibility)
+    if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
+
     display_data <- data %>%
-      select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status) %>%
+      select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
-        teacher_name = escape_html_vec(teacher_name),
+        teacher_name = ifelse(entry_mode == "quick",
+          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+          escape_html_vec(teacher_name)),
         school_name = escape_html_vec(school_name),
         district = escape_html_vec(district),
         category_name = escape_html_vec(category_name),
@@ -3604,7 +3977,7 @@ server <- function(input, output, session) {
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
-      select(-ticket_id)
+      select(-ticket_id, -entry_mode)
 
     DT::datatable(display_data,
                   options = list(

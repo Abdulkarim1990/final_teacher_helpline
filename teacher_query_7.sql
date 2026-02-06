@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   
   -- Teacher/Caller information
   teacher_name VARCHAR(120),
-  teacher_phone VARCHAR(40) NOT NULL,
+  teacher_phone VARCHAR(40) NULL,
   teacher_staff_id VARCHAR(40),
   school_name VARCHAR(200),
   district VARCHAR(120),
@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS tickets (
   status ENUM('New','In Progress','Waiting on Teacher','Escalated','Resolved','Closed') NOT NULL DEFAULT 'New',
   summary TEXT NOT NULL,
   description TEXT NULL,
+
+  -- Entry mode: 'full' for detailed cases, 'quick' for routine resolved cases
+  entry_mode ENUM('full','quick') NOT NULL DEFAULT 'full',
+  quick_outcome VARCHAR(50) NULL,  -- For quick entries: Resolved, Info Provided, Referred, Pending
   
   -- Workflow timestamps
   first_response_at TIMESTAMP NULL,
@@ -1007,3 +1011,22 @@ WHERE t.status = 'Escalated'
 ORDER BY t.escalated_at DESC;
 
 SELECT 'Schema update complete - Case Templates, Follow-ups, and Escalation tracking added!' as Status;
+
+-- =====================================================
+-- Quick Entry Mode Support
+-- Run these ALTER TABLE statements for existing deployments
+-- =====================================================
+
+-- Add entry_mode column to tickets table
+ALTER TABLE tickets ADD COLUMN entry_mode ENUM('full','quick') NOT NULL DEFAULT 'full';
+
+-- Add quick_outcome column for quick entries
+ALTER TABLE tickets ADD COLUMN quick_outcome VARCHAR(50) NULL;
+
+-- Make teacher_phone nullable for quick entries
+ALTER TABLE tickets MODIFY COLUMN teacher_phone VARCHAR(40) NULL;
+
+-- Index for filtering by entry mode
+CREATE INDEX idx_tickets_entry_mode ON tickets(entry_mode, created_at);
+
+SELECT 'Quick Entry Mode schema update complete!' as Status;
