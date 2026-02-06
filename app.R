@@ -2,10 +2,13 @@
 # Enhanced Version with Case Details Management
 # Configured for Digital Ocean MySQL hosting
 
-# Ensure renv packages are used when running on Shiny Server
 if (file.exists("renv/activate.R")) {
+  message("Activating renv...")
   source("renv/activate.R")
+} else {
+  message("renv/activate.R not found; using system libraries.")
 }
+
 
 
 library(shiny)
@@ -24,7 +27,7 @@ library(pool)
 library(openxlsx)
 library(dplyr)
 
-# install.packages("bcrypt")  # run once
+
 library(bcrypt)
 
 
