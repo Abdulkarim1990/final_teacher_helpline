@@ -1,6 +1,6 @@
 # GES Teacher Support Helpline & Query Tracking System
 # Enhanced Version with Case Details Management
-# Configured for Digital Ocean MySQL hosting
+# Configured for Heroku deployment with JawsDB MySQL
 
 if (file.exists("renv/activate.R")) {
   message("Activating renv...")
@@ -5750,6 +5750,7 @@ server <- function(input, output, session) {
 }
 
 # Run the application
-
-shinyApp(ui = ui, server = server)
+# Heroku sets the PORT environment variable; fallback to 3838 for local dev
+port <- as.numeric(Sys.getenv("PORT", "3838"))
+shinyApp(ui = ui, server = server, options = list(host = "0.0.0.0", port = port))
 
