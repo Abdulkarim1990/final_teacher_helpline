@@ -1,6 +1,5 @@
 # GES Teacher Support Helpline & Query Tracking System
-# Enhanced Version with Case Details Management
-# Configured for Heroku deployment with JawsDB MySQL
+
 
 if (file.exists("renv/activate.R")) {
   message("Activating renv...")
@@ -580,7 +579,7 @@ get_case_details <- function(con, ticket_id) {
 # NEW: Get case action history/timeline
 get_case_actions <- function(con, ticket_id) {
   if (is.null(con) || is.null(ticket_id)) return(data.frame())
-
+  
   tryCatch({
     query <- "
       SELECT ta.*,
@@ -601,7 +600,7 @@ get_case_actions <- function(con, ticket_id) {
       WHERE ta.ticket_id = ?
       ORDER BY ta.action_at DESC
     "
-
+    
     dbGetQuery(con, query, params = list(ticket_id))
   }, error = function(e) {
     showNotification(paste("Error loading case actions:", e$message), type = "error")
@@ -612,7 +611,7 @@ get_case_actions <- function(con, ticket_id) {
 # NEW: Get follow-ups for a specific case
 get_case_followups <- function(con, ticket_id) {
   if (is.null(con) || is.null(ticket_id)) return(data.frame())
-
+  
   tryCatch({
     query <- "
       SELECT f.*,
@@ -630,7 +629,7 @@ get_case_followups <- function(con, ticket_id) {
       WHERE f.ticket_id = ?
       ORDER BY f.follow_up_date DESC
     "
-
+    
     dbGetQuery(con, query, params = list(ticket_id))
   }, error = function(e) {
     data.frame()
@@ -782,12 +781,12 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
     showNotification("Database connection not available", type = "error")
     return(FALSE)
   }
-
+  
   tryCatch({
     current_year <- year(Sys.Date())
     timestamp_id <- as.integer(as.numeric(Sys.time()) %% 1000000)
     case_code <- sprintf("GES-%d-%06d", current_year, timestamp_id)
-
+    
     teacher_name <- if (is.null(teacher_name) || teacher_name == "") NA else teacher_name
     teacher_phone <- if (is.null(teacher_phone) || teacher_phone == "") NA else teacher_phone
     teacher_staff_id <- if (is.null(teacher_staff_id) || teacher_staff_id == "") "" else teacher_staff_id
@@ -795,10 +794,10 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
     district <- if (is.null(district) || district == "") "" else district
     description <- if (is.null(description) || description == "") "" else description
     quick_outcome <- if (is.null(quick_outcome) || quick_outcome == "") NA else quick_outcome
-
+    
     # Set resolved_at for quick entries that are immediately resolved
     resolved_at_val <- if (entry_mode == "quick" && status == "Resolved") "NOW()" else "NULL"
-
+    
     query <- paste0("
       INSERT INTO tickets (
         case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
@@ -806,13 +805,13 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
         entry_mode, quick_outcome, resolved_at, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ", resolved_at_val, ", NOW())
     ")
-
+    
     rows_affected <- dbExecute(con, query, params = list(
       case_code, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
       school_name, district, category_id, subcategory_id, priority, status, summary, description,
       entry_mode, quick_outcome
     ))
-
+    
     if (rows_affected > 0) {
       if (entry_mode == "quick") {
         showNotification(paste("Quick entry logged!", case_code), type = "message", duration = 3)
@@ -824,7 +823,7 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
       showNotification("Failed to create case - no rows affected", type = "error")
       return(FALSE)
     }
-
+    
   }, error = function(e) {
     showNotification(paste("Error saving ticket:", e$message), type = "error")
     return(FALSE)
@@ -1048,7 +1047,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Feature cards
       div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 40px 40px; max-width: 1200px; margin: 0 auto;",
           div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
@@ -1067,7 +1066,7 @@ ui <- tagList(
               tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
           )
       ),
-
+      
       # How It Works Section
       div(style = "background: rgba(255,255,255,0.05); padding: 50px 40px; margin-bottom: 0;",
           div(style = "max-width: 1000px; margin: 0 auto;",
@@ -1104,7 +1103,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Contact Section
       div(style = "padding: 50px 40px; background: rgba(0,0,0,0.15);",
           div(style = "max-width: 1000px; margin: 0 auto; text-align: center;",
@@ -1130,7 +1129,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Footer
       div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
           tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0 0 5px 0;"),
@@ -1176,45 +1175,45 @@ ui <- tagList(
         )
     )
   ),
-
+  
   # ========================================
   # PASSWORD CHANGE MODAL OVERLAY
   # ========================================
   hidden(
     div(id = "password_change_overlay",
         style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100001; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;",
-
+        
         div(style = "background: white; border-radius: 16px; padding: 40px; width: 450px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
-
+            
             div(style = "text-align: center; margin-bottom: 25px;",
                 tags$div(icon("key"), style = "font-size: 48px; color: #f59e0b; margin-bottom: 15px;"),
                 tags$h2("Change Your Password", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 10px 0;"),
                 uiOutput("password_change_subtitle")
             ),
-
+            
             div(
               passwordInput("current_password", "Current Password", placeholder = "Enter current password", width = "100%"),
               passwordInput("new_password", "New Password", placeholder = "Enter new password (min 8 characters)", width = "100%"),
               passwordInput("confirm_password", "Confirm New Password", placeholder = "Re-enter new password", width = "100%"),
-
+              
               # Password requirements hint
               div(style = "background: #f0f9ff; padding: 12px; border-radius: 8px; margin: 15px 0;",
                   tags$p(style = "margin: 0 0 8px 0; font-weight: 600; color: #1e3a8a; font-size: 13px;", "Password Requirements:"),
                   tags$ul(style = "margin: 0; padding-left: 20px; color: #64748b; font-size: 12px;",
-                    tags$li("At least 8 characters long"),
-                    tags$li("Contains at least one uppercase letter"),
-                    tags$li("Contains at least one lowercase letter"),
-                    tags$li("Contains at least one number")
+                          tags$li("At least 8 characters long"),
+                          tags$li("Contains at least one uppercase letter"),
+                          tags$li("Contains at least one lowercase letter"),
+                          tags$li("Contains at least one number")
                   )
               ),
-
+              
               div(style = "display: flex; gap: 10px; margin-top: 20px;",
                   actionButton("change_password_btn", "Change Password",
                                class = "btn btn-primary",
                                style = "flex: 1; padding: 12px; font-size: 16px; font-weight: 600; background: #1e3a8a; border-color: #1e3a8a; border-radius: 8px;"),
                   uiOutput("skip_password_change_ui")
               ),
-
+              
               br(),
               div(style = "text-align: center;",
                   tags$span(id = "password_change_msg_display", style = "color: #dc2626; font-weight: 500;",
@@ -1224,7 +1223,7 @@ ui <- tagList(
         )
     )
   ),
-
+  
   # ========================================
   # MAIN DASHBOARD (hidden until login or analytics)
   # ========================================
@@ -1247,7 +1246,7 @@ ui <- tagList(
                     uiOutput("user_info_header")
             )
           ),
-
+          
           # Hidden sidebar with menu for tab switching (clean menu)
           dashboardSidebar(
             collapsed = TRUE,
@@ -1267,7 +1266,7 @@ ui <- tagList(
             
             # Hidden input for tab navigation
             shinyjs::hidden(textInput("current_tab", "", value = "dashboard")),
-
+            
             # Enhanced CSS for modern styling and case details
             tags$head(
               # Load Font Awesome
@@ -1803,34 +1802,34 @@ ui <- tagList(
                               )
                      )
             ),
-
+            
             # Escalation Popup Modal (shows when case is escalated)
             hidden(
               tags$div(id = "escalationPopupOverlay", class = "escalation-overlay",
-                onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())"
+                       onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())"
               )
             ),
             hidden(
               tags$div(id = "escalationPopup", class = "escalation-popup",
-                tags$button(class = "close-btn", onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())",
-                            icon("times")),
-                tags$h3(icon("exclamation-triangle"), " Case Escalated!"),
-                uiOutput("escalation_popup_content"),
-                hr(),
-                tags$p("This case has been sent to the National PRO Office for review."),
-                tags$p(tags$strong("Email notification sent to:"), " enquiry.nationalprooffice@gmail.com"),
-                br(),
-                fluidRow(
-                  column(6,
-                    actionButton("view_escalated_case", "View Case Details", class = "btn btn-light", style = "width: 100%;")
-                  ),
-                  column(6,
-                    actionButton("go_to_escalated_tab", "Go to Escalated Cases", class = "btn btn-light", style = "width: 100%;")
-                  )
-                )
+                       tags$button(class = "close-btn", onclick = "Shiny.setInputValue('close_escalation_popup', Math.random())",
+                                   icon("times")),
+                       tags$h3(icon("exclamation-triangle"), " Case Escalated!"),
+                       uiOutput("escalation_popup_content"),
+                       hr(),
+                       tags$p("This case has been sent to the National PRO Office for review."),
+                       tags$p(tags$strong("Email notification sent to:"), " enquiry.nationalprooffice@gmail.com"),
+                       br(),
+                       fluidRow(
+                         column(6,
+                                actionButton("view_escalated_case", "View Case Details", class = "btn btn-light", style = "width: 100%;")
+                         ),
+                         column(6,
+                                actionButton("go_to_escalated_tab", "Go to Escalated Cases", class = "btn btn-light", style = "width: 100%;")
+                         )
+                       )
               )
             ),
-
+            
             # Bulk Status Update Modal
             tags$div(id = "bulkStatusModal", class = "modal fade", tabindex = "-1", role = "dialog",
                      tags$div(class = "modal-dialog", role = "document",
@@ -1851,7 +1850,7 @@ ui <- tagList(
                               )
                      )
             ),
-
+            
             # Bulk Priority Change Modal
             tags$div(id = "bulkPriorityModal", class = "modal fade", tabindex = "-1", role = "dialog",
                      tags$div(class = "modal-dialog", role = "document",
@@ -1870,7 +1869,7 @@ ui <- tagList(
                               )
                      )
             ),
-
+            
             # Escalation Reason Modal (for detailed escalation)
             tags$div(id = "escalationReasonModal", class = "modal fade", tabindex = "-1", role = "dialog",
                      tags$div(class = "modal-dialog", role = "document",
@@ -1897,7 +1896,7 @@ ui <- tagList(
                               )
                      )
             ),
-
+            
             tabItems(
               # Dashboard Tab with sub-tabs
               tabItem(
@@ -1910,17 +1909,17 @@ ui <- tagList(
                     # Refresh Bar at top
                     fluidRow(
                       column(12,
-                        div(style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 8px;",
-                            div(style = "color: white;",
-                                icon("chart-line", style = "margin-right: 8px;"),
-                                tags$span("Case Summary Dashboard", style = "font-weight: 600; font-size: 16px;"),
-                                tags$small(textOutput("last_refresh_time", inline = TRUE), style = "margin-left: 15px; opacity: 0.8;")
-                            ),
-                            actionButton("refresh_case_summary", "Refresh Data",
-                                        class = "btn btn-light",
-                                        icon = icon("sync"),
-                                        style = "font-weight: 500;")
-                        )
+                             div(style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 8px;",
+                                 div(style = "color: white;",
+                                     icon("chart-line", style = "margin-right: 8px;"),
+                                     tags$span("Case Summary Dashboard", style = "font-weight: 600; font-size: 16px;"),
+                                     tags$small(textOutput("last_refresh_time", inline = TRUE), style = "margin-left: 15px; opacity: 0.8;")
+                                 ),
+                                 actionButton("refresh_case_summary", "Refresh Data",
+                                              class = "btn btn-light",
+                                              icon = icon("sync"),
+                                              style = "font-weight: 500;")
+                             )
                       )
                     ),
                     # Follow-up Alert Widget
@@ -1977,7 +1976,7 @@ ui <- tagList(
                       box(
                         title = "My Cases", status = "primary", solidHeader = TRUE,
                         width = 12,
-
+                        
                         fluidRow(
                           column(4,
                                  selectInput("my_status_filter", "Status Filter",
@@ -1991,12 +1990,12 @@ ui <- tagList(
                                               style = "margin-top: 25px;")
                           )
                         ),
-
+                        
                         withSpinner(DT::dataTableOutput("my_cases_table"))
                       )
                     )
                   ),
-
+                  
                   # Follow-ups Tab
                   tabPanel(
                     title = "Follow-ups",
@@ -2009,7 +2008,7 @@ ui <- tagList(
                       valueBoxOutput("followup_week_box", width = 3),
                       valueBoxOutput("followup_total_box", width = 3)
                     ),
-
+                    
                     fluidRow(
                       # Pending Follow-ups
                       box(
@@ -2017,25 +2016,25 @@ ui <- tagList(
                         width = 8,
                         fluidRow(
                           column(3,
-                            selectInput("followup_urgency_filter", "Filter by Urgency",
-                                        choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
+                                 selectInput("followup_urgency_filter", "Filter by Urgency",
+                                             choices = c("All" = "", "Overdue", "Due Today", "Upcoming"))
                           ),
                           column(3,
-                            uiOutput("followup_region_filter_ui")
+                                 uiOutput("followup_region_filter_ui")
                           ),
                           column(3,
-                            actionButton("refresh_followups", "Refresh", class = "btn-warning",
-                                         style = "margin-top: 25px;", icon = icon("sync"))
+                                 actionButton("refresh_followups", "Refresh", class = "btn-warning",
+                                              style = "margin-top: 25px;", icon = icon("sync"))
                           ),
                           column(3,
-                            downloadButton("export_followups", "Export to Excel",
-                                           class = "btn-success", style = "margin-top: 25px;")
+                                 downloadButton("export_followups", "Export to Excel",
+                                                class = "btn-success", style = "margin-top: 25px;")
                           )
                         ),
                         hr(),
                         withSpinner(DT::dataTableOutput("pending_followups_table"))
                       ),
-
+                      
                       # Schedule New Follow-up
                       box(
                         title = "Schedule Follow-up", status = "info", solidHeader = TRUE,
@@ -2052,7 +2051,7 @@ ui <- tagList(
                       )
                     )
                   ),
-
+                  
                   # Response Guide Tab (Call Scripts)
                   tabPanel(
                     title = "Response Guide",
@@ -2064,72 +2063,72 @@ ui <- tagList(
                         title = "Quick Responses", status = "success", solidHeader = TRUE,
                         width = 4,
                         p("Click to copy common phrases:", style = "color: #6b7280; font-size: 13px;"),
-
+                        
                         h5("Acknowledgements", style = "margin-top: 15px; color: #1e3a8a;"),
                         actionButton("qr_ack_received", "Case Received", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
                         actionButton("qr_ack_escalated", "Case Escalated", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
                         actionButton("qr_ack_processing", "Being Processed", class = "btn-sm btn-outline-primary", style = "margin: 2px;"),
-
+                        
                         h5("Status Updates", style = "margin-top: 15px; color: #1e3a8a;"),
                         actionButton("qr_status_pending", "Pending Info", class = "btn-sm btn-outline-warning", style = "margin: 2px;"),
                         actionButton("qr_status_followup", "Follow-up Set", class = "btn-sm btn-outline-warning", style = "margin: 2px;"),
                         actionButton("qr_status_resolved", "Case Resolved", class = "btn-sm btn-outline-success", style = "margin: 2px;"),
-
+                        
                         h5("Professional Phrases", style = "margin-top: 15px; color: #1e3a8a;"),
                         actionButton("qr_phrase_understand", "I understand...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
                         actionButton("qr_phrase_patience", "Thank you for patience...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
                         actionButton("qr_phrase_assist", "Let me assist...", class = "btn-sm btn-outline-secondary", style = "margin: 2px;"),
-
+                        
                         h5("Closings", style = "margin-top: 15px; color: #1e3a8a;"),
                         actionButton("qr_close_help", "Anything else?", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
                         actionButton("qr_close_contact", "Feel free to contact...", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
                         actionButton("qr_close_reference", "Your reference number...", class = "btn-sm btn-outline-info", style = "margin: 2px;"),
-
+                        
                         hr(),
                         h5("Copied Text:"),
                         verbatimTextOutput("quick_response_text", placeholder = TRUE)
                       ),
-
+                      
                       # Response Templates Column
                       box(
                         title = "Response Templates", status = "primary", solidHeader = TRUE,
                         width = 8,
                         fluidRow(
                           column(4,
-                            selectInput("template_category_filter", "Category",
-                                        choices = c("All" = "", "Payroll", "CPD/Licensing", "ICT", "Transfer",
-                                                    "Welfare", "General", "Escalation"))
+                                 selectInput("template_category_filter", "Category",
+                                             choices = c("All" = "", "Payroll", "CPD/Licensing", "ICT", "Transfer",
+                                                         "Welfare", "General", "Escalation"))
                           ),
                           column(6,
-                            textInput("template_search", "Search Templates",
-                                      placeholder = "Search by name or content...")
+                                 textInput("template_search", "Search Templates",
+                                           placeholder = "Search by name or content...")
                           ),
                           column(2,
-                            actionButton("refresh_templates", "Refresh", class = "btn-primary",
-                                         style = "margin-top: 25px;", icon = icon("sync"))
+                                 actionButton("refresh_templates", "Refresh", class = "btn-primary",
+                                              style = "margin-top: 25px;", icon = icon("sync"))
                           )
                         ),
                         hr(),
                         fluidRow(
                           column(5,
-                            h5("Available Templates"),
-                            div(style = "max-height: 350px; overflow-y: auto;",
-                              uiOutput("templates_list")
-                            )
+                                 h5("Available Templates"),
+                                 div(style = "max-height: 350px; overflow-y: auto;",
+                                     uiOutput("templates_list")
+                                 )
                           ),
                           column(7,
-                            h5("Preview"),
-                            wellPanel(style = "min-height: 200px; background: #f8fafc;",
-                              uiOutput("template_preview")
-                            ),
-                            actionButton("use_template", "Copy Template",
-                                         class = "btn-primary", icon = icon("copy"))
+                                 h5("Preview"),
+                                 wellPanel(style = "min-height: 200px; background: #f8fafc;",
+                                           uiOutput("template_preview")
+                                 ),
+                                 actionButton("use_template", "Copy Template",
+                                              class = "btn-primary", icon = icon("copy"))
                           )
                         )
                       )
                     )
                   ),
-
+                  
                   # Escalated Cases Tab (Only for National PRO Office)
                   tabPanel(
                     title = uiOutput("escalated_tab_title"),
@@ -2147,158 +2146,158 @@ ui <- tagList(
                   box(
                     title = "Log New Teacher Support Case", status = "primary", solidHeader = TRUE,
                     width = 12,
-
+                    
                     # Entry mode toggle
                     div(style = "margin-bottom: 20px; padding: 10px; background: #f0f4f8; border-radius: 8px;",
-                      fluidRow(
-                        column(6,
-                          radioGroupButtons("entry_mode", label = NULL,
-                            choices = c("Full Case" = "full", "Quick Entry" = "quick"),
-                            selected = "full", justified = FALSE, size = "normal",
-                            status = "primary",
-                            checkIcon = list(yes = icon("check"))
+                        fluidRow(
+                          column(6,
+                                 radioGroupButtons("entry_mode", label = NULL,
+                                                   choices = c("Full Case" = "full", "Quick Entry" = "quick"),
+                                                   selected = "full", justified = FALSE, size = "normal",
+                                                   status = "primary",
+                                                   checkIcon = list(yes = icon("check"))
+                                 )
+                          ),
+                          column(6, style = "padding-top: 5px;",
+                                 uiOutput("quick_entry_today_count")
                           )
                         ),
-                        column(6, style = "padding-top: 5px;",
-                          uiOutput("quick_entry_today_count")
+                        tags$small(class = "text-muted",
+                                   tags$b("Full Case:"), " For cases needing detailed tracking, follow-up, or escalation. ",
+                                   tags$b("Quick Entry:"), " For routine cases resolved at the regional level — log the category and outcome only."
                         )
-                      ),
-                      tags$small(class = "text-muted",
-                        tags$b("Full Case:"), " For cases needing detailed tracking, follow-up, or escalation. ",
-                        tags$b("Quick Entry:"), " For routine cases resolved at the regional level — log the category and outcome only."
-                      )
                     ),
-
+                    
                     # ===== FULL CASE FORM =====
                     div(id = "full_case_form",
-                      h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
-
-                      fluidRow(
-                        column(6,
-                               textInput("teacher_name", "Teacher/Caller Name *",
-                                         placeholder = "Full name of person calling"),
-                               textInput("teacher_phone", "Contact Number *",
-                                         placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
-                               textInput("teacher_staff_id", "Staff ID",
-                                         placeholder = "Teacher staff ID (if available)")
+                        h4("Teacher/Caller Information", style = "color: #1e3a8a; margin-bottom: 15px;"),
+                        
+                        fluidRow(
+                          column(6,
+                                 textInput("teacher_name", "Teacher/Caller Name *",
+                                           placeholder = "Full name of person calling"),
+                                 textInput("teacher_phone", "Contact Number *",
+                                           placeholder = "+233XXXXXXXXX or 0XXXXXXXXX"),
+                                 textInput("teacher_staff_id", "Staff ID",
+                                           placeholder = "Teacher staff ID (if available)")
+                          ),
+                          column(6,
+                                 uiOutput("region_select_ui"),
+                                 textInput("district", "District", placeholder = "District name"),
+                                 textInput("school_name", "School Name", placeholder = "Name of school")
+                          )
                         ),
-                        column(6,
-                               uiOutput("region_select_ui"),
-                               textInput("district", "District", placeholder = "District name"),
-                               textInput("school_name", "School Name", placeholder = "Name of school")
-                        )
-                      ),
-
-                      hr(),
-
-                      h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
-
-                      fluidRow(
-                        column(6,
-                               uiOutput("channel_select_ui"),
-                               uiOutput("category_select_ui"),
-                               uiOutput("subcategory_select_ui")
+                        
+                        hr(),
+                        
+                        h4("Case Details", style = "color: #1e3a8a; margin-bottom: 15px;"),
+                        
+                        fluidRow(
+                          column(6,
+                                 uiOutput("channel_select_ui"),
+                                 uiOutput("category_select_ui"),
+                                 uiOutput("subcategory_select_ui")
+                          ),
+                          column(6,
+                                 selectInput("priority", "Priority Level *",
+                                             choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
+                                             selected = "Medium"),
+                                 checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
+                          )
                         ),
-                        column(6,
-                               selectInput("priority", "Priority Level *",
-                                           choices = c("Low" = "Low", "Medium" = "Medium", "High" = "High", "Urgent" = "Urgent"),
-                                           selected = "Medium"),
-                               checkboxInput("consent_contact", "Teacher agrees to be contacted on this number", value = TRUE)
+                        
+                        fluidRow(
+                          column(12,
+                                 textAreaInput("case_summary", "Case Summary *",
+                                               placeholder = "Brief summary of the issue (minimum 20 characters)...",
+                                               height = "100px"),
+                                 textAreaInput("case_description", "Detailed Description",
+                                               placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
+                                               height = "120px")
+                          )
+                        ),
+                        
+                        hr(),
+                        
+                        fluidRow(
+                          column(12, align = "center",
+                                 actionButton("save_case", "Create Case",
+                                              class = "btn-primary btn-lg",
+                                              style = "margin: 10px; padding: 10px 30px;"),
+                                 actionButton("clear_form", "Clear Form",
+                                              class = "btn-default btn-lg",
+                                              style = "margin: 10px; padding: 10px 30px;")
+                          )
                         )
-                      ),
-
-                      fluidRow(
-                        column(12,
-                               textAreaInput("case_summary", "Case Summary *",
-                                             placeholder = "Brief summary of the issue (minimum 20 characters)...",
-                                             height = "100px"),
-                               textAreaInput("case_description", "Detailed Description",
-                                             placeholder = "Provide detailed information about the issue, including any relevant background, what the teacher has tried, and any specific questions they have...",
-                                             height = "120px")
-                        )
-                      ),
-
-                      hr(),
-
-                      fluidRow(
-                        column(12, align = "center",
-                               actionButton("save_case", "Create Case",
-                                            class = "btn-primary btn-lg",
-                                            style = "margin: 10px; padding: 10px 30px;"),
-                               actionButton("clear_form", "Clear Form",
-                                            class = "btn-default btn-lg",
-                                            style = "margin: 10px; padding: 10px 30px;")
-                        )
-                      )
                     ),
-
+                    
                     # ===== QUICK ENTRY FORM =====
                     hidden(
                       div(id = "quick_entry_form",
-                        div(style = "background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px;",
-                          h4("Quick Case Entry", style = "color: #16a085; margin: 0 0 5px 0;",
-                             icon("bolt")),
-                          p(style = "color: #555; margin: 0;",
-                            "Log routine cases that were handled at the regional level.",
-                            " Only channel, category, and outcome are required. Teacher details are optional.")
-                        ),
-
-                        fluidRow(
-                          column(3, uiOutput("quick_region_ui")),
-                          column(3, uiOutput("quick_channel_ui")),
-                          column(3, uiOutput("quick_category_ui")),
-                          column(3, uiOutput("quick_subcategory_ui"))
-                        ),
-
-                        fluidRow(
-                          column(4,
-                            selectInput("quick_outcome", "Outcome *",
-                              choices = c("Resolved" = "Resolved",
-                                          "Info Provided" = "Info Provided",
-                                          "Referred to District" = "Referred",
-                                          "Pending Follow-up" = "Pending"),
-                              selected = "Resolved")
+                          div(style = "background: #e8f5e9; padding: 15px; border-radius: 8px; margin-bottom: 15px;",
+                              h4("Quick Case Entry", style = "color: #16a085; margin: 0 0 5px 0;",
+                                 icon("bolt")),
+                              p(style = "color: #555; margin: 0;",
+                                "Log routine cases that were handled at the regional level.",
+                                " Only channel, category, and outcome are required. Teacher details are optional.")
                           ),
-                          column(4,
-                            textInput("quick_teacher_name", "Teacher Name (optional)",
-                                      placeholder = "Name if available")
+                          
+                          fluidRow(
+                            column(3, uiOutput("quick_region_ui")),
+                            column(3, uiOutput("quick_channel_ui")),
+                            column(3, uiOutput("quick_category_ui")),
+                            column(3, uiOutput("quick_subcategory_ui"))
                           ),
-                          column(4,
-                            textInput("quick_teacher_phone", "Contact Number (optional)",
-                                      placeholder = "+233XXXXXXXXX")
-                          )
-                        ),
-
-                        fluidRow(
-                          column(12,
-                            textAreaInput("quick_note", "Brief Note (optional)",
-                                          placeholder = "Short note about the case...",
-                                          height = "60px")
-                          )
-                        ),
-
-                        hr(),
-
-                        fluidRow(
-                          column(12, align = "center",
-                            actionButton("save_quick_case", "Log Quick Entry",
-                                         class = "btn-success btn-lg",
-                                         icon = icon("bolt"),
-                                         style = "margin: 10px; padding: 10px 30px;"),
-                            actionButton("switch_to_full", "Switch to Full Case",
-                                         class = "btn-default btn-lg",
-                                         icon = icon("expand"),
-                                         style = "margin: 10px; padding: 10px 30px;"),
-                            actionButton("clear_quick_form", "Clear",
-                                         class = "btn-default btn-lg",
-                                         style = "margin: 10px; padding: 10px 30px;")
-                          )
-                        ),
-
-                        hr(),
-
-                        # Today's quick entry summary
-                        uiOutput("quick_entry_summary")
+                          
+                          fluidRow(
+                            column(4,
+                                   selectInput("quick_outcome", "Outcome *",
+                                               choices = c("Resolved" = "Resolved",
+                                                           "Info Provided" = "Info Provided",
+                                                           "Referred to District" = "Referred",
+                                                           "Pending Follow-up" = "Pending"),
+                                               selected = "Resolved")
+                            ),
+                            column(4,
+                                   textInput("quick_teacher_name", "Teacher Name (optional)",
+                                             placeholder = "Name if available")
+                            ),
+                            column(4,
+                                   textInput("quick_teacher_phone", "Contact Number (optional)",
+                                             placeholder = "+233XXXXXXXXX")
+                            )
+                          ),
+                          
+                          fluidRow(
+                            column(12,
+                                   textAreaInput("quick_note", "Brief Note (optional)",
+                                                 placeholder = "Short note about the case...",
+                                                 height = "60px")
+                            )
+                          ),
+                          
+                          hr(),
+                          
+                          fluidRow(
+                            column(12, align = "center",
+                                   actionButton("save_quick_case", "Log Quick Entry",
+                                                class = "btn-success btn-lg",
+                                                icon = icon("bolt"),
+                                                style = "margin: 10px; padding: 10px 30px;"),
+                                   actionButton("switch_to_full", "Switch to Full Case",
+                                                class = "btn-default btn-lg",
+                                                icon = icon("expand"),
+                                                style = "margin: 10px; padding: 10px 30px;"),
+                                   actionButton("clear_quick_form", "Clear",
+                                                class = "btn-default btn-lg",
+                                                style = "margin: 10px; padding: 10px 30px;")
+                            )
+                          ),
+                          
+                          hr(),
+                          
+                          # Today's quick entry summary
+                          uiOutput("quick_entry_summary")
                       )
                     )
                   )
@@ -2355,24 +2354,24 @@ ui <- tagList(
                     ),
                     
                     hr(),
-
+                    
                     # Bulk Actions Bar (hidden by default)
                     hidden(
                       div(id = "bulk_actions_bar", class = "bulk-actions-bar",
-                        span(class = "selected-count", textOutput("bulk_selected_count", inline = TRUE)),
-                        actionButton("bulk_update_status", "Update Status", icon = icon("edit"), class = "btn-sm"),
-                        actionButton("bulk_change_priority", "Change Priority", icon = icon("flag"), class = "btn-sm"),
-                        actionButton("bulk_assign", "Assign", icon = icon("user-plus"), class = "btn-sm"),
-                        actionButton("bulk_escalate", "Escalate All", icon = icon("exclamation-triangle"), class = "btn-sm btn-danger"),
-                        actionButton("bulk_clear_selection", "Clear Selection", icon = icon("times"), class = "btn-sm")
+                          span(class = "selected-count", textOutput("bulk_selected_count", inline = TRUE)),
+                          actionButton("bulk_update_status", "Update Status", icon = icon("edit"), class = "btn-sm"),
+                          actionButton("bulk_change_priority", "Change Priority", icon = icon("flag"), class = "btn-sm"),
+                          actionButton("bulk_assign", "Assign", icon = icon("user-plus"), class = "btn-sm"),
+                          actionButton("bulk_escalate", "Escalate All", icon = icon("exclamation-triangle"), class = "btn-sm btn-danger"),
+                          actionButton("bulk_clear_selection", "Clear Selection", icon = icon("times"), class = "btn-sm")
                       )
                     ),
-
+                    
                     withSpinner(DT::dataTableOutput("all_cases_table"))
                   )
                 )
               ),
-
+              
               # Analytics Tab
               tabItem(
                 tabName = "analytics",
@@ -2542,7 +2541,7 @@ server <- function(input, output, session) {
     show_password_change = FALSE,  # Track if password change modal should show
     last_activity = NULL  # SECURITY: Track last user activity for session timeout
   )
-
+  
   # =============================================================================
   # SECURITY: Rate Limiting for Login Attempts
   # Prevents brute-force password attacks
@@ -2550,12 +2549,12 @@ server <- function(input, output, session) {
   login_attempts <- reactiveVal(list())
   RATE_LIMIT_MAX_ATTEMPTS <- 5      # Maximum attempts allowed
   RATE_LIMIT_WINDOW_SECONDS <- 900  # 15 minutes window
-
+  
   # Function to check if login is rate limited
   is_rate_limited <- function(email) {
     attempts <- login_attempts()
     current_time <- as.numeric(Sys.time())
-
+    
     # Clean up old attempts for this email
     user_attempts <- attempts[[email]]
     if (!is.null(user_attempts)) {
@@ -2567,12 +2566,12 @@ server <- function(input, output, session) {
     }
     return(FALSE)
   }
-
+  
   # Function to record a login attempt
   record_login_attempt <- function(email) {
     attempts <- login_attempts()
     current_time <- as.numeric(Sys.time())
-
+    
     # Clean up old attempts and add new one
     user_attempts <- attempts[[email]]
     if (!is.null(user_attempts)) {
@@ -2584,20 +2583,20 @@ server <- function(input, output, session) {
     attempts[[email]] <- user_attempts
     login_attempts(attempts)
   }
-
+  
   # Function to clear rate limit on successful login
   clear_rate_limit <- function(email) {
     attempts <- login_attempts()
     attempts[[email]] <- NULL
     login_attempts(attempts)
   }
-
+  
   # =============================================================================
   # SECURITY: Session Timeout for Idle Users
   # Automatically logs out users after 30 minutes of inactivity
   # =============================================================================
   SESSION_TIMEOUT_MINUTES <- 30
-
+  
   # Update last activity on any user interaction
   observe({
     # This triggers on any input change
@@ -2606,11 +2605,11 @@ server <- function(input, output, session) {
       rv$last_activity <- Sys.time()
     }
   })
-
+  
   # Check for session timeout periodically
   observe({
     invalidateLater(60000)  # Check every minute
-
+    
     if (isTRUE(rv$logged_in) && !is.null(rv$last_activity)) {
       idle_time <- difftime(Sys.time(), rv$last_activity, units = "mins")
       if (idle_time > SESSION_TIMEOUT_MINUTES) {
@@ -2620,7 +2619,7 @@ server <- function(input, output, session) {
             log_activity(pool, rv$user$user_id, "Session Timeout", "Auto-logout after idle timeout")
           }, error = function(e) {})
         }
-
+        
         # Clear session
         rv$logged_in <- FALSE
         rv$user <- NULL
@@ -2628,12 +2627,12 @@ server <- function(input, output, session) {
         rv$show_password_change <- FALSE
         rv$last_activity <- NULL
         rv$page_state <- "landing"
-
+        
         # Clear sensitive inputs
         updateTextInput(session, "login_email", value = "")
         updateTextInput(session, "login_password", value = "")
         shinyjs::hide("password_change_overlay")
-
+        
         showNotification(
           "Your session has expired due to inactivity. Please log in again.",
           type = "warning",
@@ -2642,7 +2641,7 @@ server <- function(input, output, session) {
       }
     }
   })
-
+  
   # --- Landing page button handlers ---
   observeEvent(input$landing_login_btn, { rv$page_state <- "login" })
   observeEvent(input$hero_login_btn, { rv$page_state <- "login" })
@@ -2652,7 +2651,7 @@ server <- function(input, output, session) {
     rv$page_state <- "landing"
     output$login_msg <- renderText("")
   })
-
+  
   # --- Landing page live statistics ---
   output$landing_total_cases <- renderUI({
     tryCatch({
@@ -2662,7 +2661,7 @@ server <- function(input, output, session) {
       tags$span("--")
     })
   })
-
+  
   output$landing_resolved_cases <- renderUI({
     tryCatch({
       count <- dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets WHERE status IN ('Resolved', 'Closed')")$count
@@ -2722,7 +2721,7 @@ server <- function(input, output, session) {
   can_see_all_regions <- function(role) {
     role %in% c("National Admin", "National Resolver")
   }
-
+  
   # SECURITY: Helper function to get client IP address
   get_client_ip <- function() {
     tryCatch({
@@ -2742,7 +2741,7 @@ server <- function(input, output, session) {
       return("unknown")
     })
   }
-
+  
   # Log activity helper with IP address capture
   log_activity <- function(conn, user_id, action, details = NULL) {
     tryCatch({
@@ -2761,19 +2760,19 @@ server <- function(input, output, session) {
     req(input$login_email, input$login_password)
     email <- trimws(tolower(input$login_email))
     pwd <- input$login_password
-
+    
     # SECURITY: Check rate limit before processing login
     if (is_rate_limited(email)) {
       output$login_msg <- renderText("Too many failed attempts. Please try again in 15 minutes.")
       return()
     }
-
+    
     # SECURITY: Capture client IP address for audit logging
     client_ip <- get_client_ip()
-
+    
     tryCatch({
       poolWithTransaction(pool, function(conn) {
-
+        
         if (!is_allowlisted(conn, email)) {
           record_login_attempt(email)  # SECURITY: Record failed attempt
           try(DBI::dbExecute(conn,
@@ -2783,7 +2782,7 @@ server <- function(input, output, session) {
           output$login_msg <- renderText("Access denied. Email not authorized.")
           return()
         }
-
+        
         u <- get_user_by_email(conn, email)
         if (nrow(u) == 0 || !isTRUE(u$is_active[1] == 1)) {
           record_login_attempt(email)  # SECURITY: Record failed attempt
@@ -2794,10 +2793,10 @@ server <- function(input, output, session) {
           output$login_msg <- renderText("Account not available.")
           return()
         }
-
+        
         ok <- FALSE
         try({ ok <- bcrypt::checkpw(pwd, u$password_hash[1]) }, silent = TRUE)
-
+        
         if (!isTRUE(ok)) {
           record_login_attempt(email)  # SECURITY: Record failed attempt
           try(DBI::dbExecute(conn,
@@ -2807,31 +2806,31 @@ server <- function(input, output, session) {
           output$login_msg <- renderText("Invalid credentials.")
           return()
         }
-
+        
         # SECURITY: Clear rate limit on successful login
         clear_rate_limit(email)
-
+        
         # Successful login - log with IP address
         try(DBI::dbExecute(conn,
                            "INSERT INTO login_audit (email, user_id, success, reason, ip_address) VALUES (?, ?, 1, 'Login successful', ?)",
                            params = list(email, u$user_id[1], client_ip)
         ), silent = TRUE)
-
+        
         # Check if this is a first-time login (last_login is NULL)
         is_first_login <- is.null(u$last_login[1]) || is.na(u$last_login[1])
-
+        
         # Update last_login
         try(DBI::dbExecute(conn,
                            "UPDATE users SET last_login = NOW() WHERE user_id = ?",
                            params = list(u$user_id[1])
         ), silent = TRUE)
-
+        
         rv$logged_in <- TRUE
         rv$user <- u[1, ]
         rv$first_time_login <- is_first_login
         rv$last_activity <- Sys.time()  # SECURITY: Initialize session activity timer
         output$login_msg <- renderText("")
-
+        
         # If first-time login, show password change modal
         if (is_first_login) {
           rv$show_password_change <- TRUE
@@ -2843,12 +2842,12 @@ server <- function(input, output, session) {
         } else {
           rv$page_state <- "dashboard"
         }
-
+        
         # Check for overdue follow-ups and show alert after login (only if not first time)
         if (!is_first_login) {
           tryCatch({
             user_region <- if (can_see_all_regions(u$role[1])) NULL else u$region_id[1]
-
+            
             # SECURITY FIX: Use parameterized query to prevent SQL injection
             if (!is.null(user_region)) {
               overdue_query <- "
@@ -2864,7 +2863,7 @@ server <- function(input, output, session) {
                 WHERE f.status = 'Pending' AND f.follow_up_date < CURDATE()"
               overdue_count <- dbGetQuery(conn, overdue_query)$count
             }
-
+            
             if (overdue_count > 0) {
               showNotification(
                 paste0("You have ", overdue_count, " overdue follow-up(s) that need attention!"),
@@ -2896,11 +2895,11 @@ server <- function(input, output, session) {
     updateTextInput(session, "login_password", value = "")
     shinyjs::hide("password_change_overlay")
   })
-
+  
   # ========================================
   # PASSWORD CHANGE HANDLERS
   # ========================================
-
+  
   # Password change subtitle (different message for first-time vs voluntary)
   output$password_change_subtitle <- renderUI({
     if (isTRUE(rv$first_time_login)) {
@@ -2909,7 +2908,7 @@ server <- function(input, output, session) {
       tags$p("Enter your current password and choose a new one.", style = "color: #6b7280; margin: 0; font-size: 14px;")
     }
   })
-
+  
   # Skip button UI (only show for first-time login, with warning)
   output$skip_password_change_ui <- renderUI({
     if (isTRUE(rv$first_time_login)) {
@@ -2922,7 +2921,7 @@ server <- function(input, output, session) {
                    style = "padding: 12px 20px; font-size: 14px; border-radius: 8px;")
     }
   })
-
+  
   # Open password change from header button
   observeEvent(input$open_change_password, {
     rv$show_password_change <- TRUE
@@ -2933,7 +2932,7 @@ server <- function(input, output, session) {
     updateTextInput(session, "confirm_password", value = "")
     output$password_change_msg <- renderText("")
   })
-
+  
   # Skip password change (first-time login only)
   observeEvent(input$skip_password_change, {
     rv$show_password_change <- FALSE
@@ -2941,7 +2940,7 @@ server <- function(input, output, session) {
     shinyjs::hide("password_change_overlay")
     showNotification("You can change your password anytime from the key icon in the header.", type = "message", duration = 6)
   })
-
+  
   # Cancel password change (voluntary change)
   observeEvent(input$cancel_password_change, {
     rv$show_password_change <- FALSE
@@ -2951,7 +2950,7 @@ server <- function(input, output, session) {
     updateTextInput(session, "confirm_password", value = "")
     output$password_change_msg <- renderText("")
   })
-
+  
   # Password validation function
   # SECURITY: Enhanced password validation with stronger requirements
   validate_password <- function(password) {
@@ -2979,82 +2978,82 @@ server <- function(input, output, session) {
     }
     return(list(valid = TRUE, msg = ""))
   }
-
+  
   # Change password handler
   observeEvent(input$change_password_btn, {
     req(rv$user)
-
+    
     current_pwd <- input$current_password
     new_pwd <- input$new_password
     confirm_pwd <- input$confirm_password
-
+    
     # Validate inputs
     if (is.null(current_pwd) || current_pwd == "") {
       output$password_change_msg <- renderText("Please enter your current password.")
       return()
     }
-
+    
     if (is.null(new_pwd) || new_pwd == "") {
       output$password_change_msg <- renderText("Please enter a new password.")
       return()
     }
-
+    
     if (is.null(confirm_pwd) || confirm_pwd == "") {
       output$password_change_msg <- renderText("Please confirm your new password.")
       return()
     }
-
+    
     if (new_pwd != confirm_pwd) {
       output$password_change_msg <- renderText("New passwords do not match.")
       return()
     }
-
+    
     if (new_pwd == current_pwd) {
       output$password_change_msg <- renderText("New password must be different from current password.")
       return()
     }
-
+    
     # Validate password strength
     validation <- validate_password(new_pwd)
     if (!validation$valid) {
       output$password_change_msg <- renderText(validation$msg)
       return()
     }
-
+    
     # Verify current password
     tryCatch({
       conn <- poolCheckout(pool)
       on.exit(poolReturn(conn))
-
+      
       user_data <- dbGetQuery(conn, "SELECT password_hash FROM users WHERE user_id = ?",
                               params = list(rv$user$user_id))
-
+      
       if (nrow(user_data) == 0) {
         output$password_change_msg <- renderText("User not found.")
         return()
       }
-
+      
       # Check current password
       ok <- FALSE
       try({ ok <- bcrypt::checkpw(current_pwd, user_data$password_hash[1]) }, silent = TRUE)
-
+      
       if (!isTRUE(ok)) {
         output$password_change_msg <- renderText("Current password is incorrect.")
         return()
       }
-
+      
       # Hash new password and update
       new_hash <- bcrypt::hashpw(new_pwd)
-
+      
       dbExecute(conn, "UPDATE users SET password_hash = ? WHERE user_id = ?",
                 params = list(new_hash, rv$user$user_id))
-
+      
       # Log the password change
       try(dbExecute(conn,
                     "INSERT INTO login_audit (email, user_id, success, reason) VALUES (?, ?, 1, 'Password changed')",
                     params = list(rv$user$email, rv$user$user_id)
       ), silent = TRUE)
-
+      
       # Close the modal and show success
       rv$show_password_change <- FALSE
       rv$first_time_login <- FALSE
@@ -3063,14 +3062,14 @@ server <- function(input, output, session) {
       updateTextInput(session, "new_password", value = "")
       updateTextInput(session, "confirm_password", value = "")
       output$password_change_msg <- renderText("")
-
+      
       showNotification("Password changed successfully!", type = "message", duration = 5)
-
+      
     }, error = function(e) {
       output$password_change_msg <- renderText(paste("Error:", e$message))
     })
   })
-
+  
   # --- Back to landing from analytics (for non-logged-in users) ---
   observeEvent(input$back_to_landing_btn, {
     rv$page_state <- "landing"
@@ -3107,12 +3106,12 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$header_login_btn, { rv$page_state <- "login" })
-
+  
   # --- Horizontal Navigation Menu in Header ---
   output$header_nav_menu <- renderUI({
     current <- input$current_tab
     if (is.null(current)) current <- "dashboard"
-
+    
     if (isTRUE(rv$logged_in)) {
       # Clean navigation - Dashboard, New Case, All Cases, Analytics only
       div(class = "header-nav-menu",
@@ -3138,33 +3137,33 @@ server <- function(input, output, session) {
       )
     }
   })
-
+  
   # --- Navigation Button Observers ---
   observeEvent(input$nav_dashboard, {
     updateTextInput(session, "current_tab", value = "dashboard")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "dashboard")
   })
-
+  
   observeEvent(input$nav_new_case, {
     updateTextInput(session, "current_tab", value = "new_case")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "new_case")
   })
-
+  
   observeEvent(input$nav_all_cases, {
     updateTextInput(session, "current_tab", value = "all_cases")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "all_cases")
   })
-
+  
   observeEvent(input$nav_analytics, {
     updateTextInput(session, "current_tab", value = "analytics")
     shinydashboard::updateTabItems(session, "sidebar_menu", selected = "analytics")
   })
-
+  
   # Sync current_tab when sidebar_menu changes (for any external changes)
   observeEvent(input$sidebar_menu, {
     updateTextInput(session, "current_tab", value = input$sidebar_menu)
   })
-
+  
   # --- Quick Case Lookup in Header ---
   output$header_quick_search <- renderUI({
     if (isTRUE(rv$logged_in)) {
@@ -3179,7 +3178,7 @@ server <- function(input, output, session) {
       )
     }
   })
-
+  
   # --- Legacy Sidebar Menu (kept for compatibility) ---
   output$sidebar_menu_items <- renderUI({
     if (isTRUE(rv$logged_in)) {
@@ -3240,7 +3239,7 @@ server <- function(input, output, session) {
     req(input$category_id)
     get_subcategories(con(), input$category_id)
   })
-
+  
   # Quick entry subcategories (separate reactive for quick form's category select)
   quick_subcategories <- reactive({
     req(input$quick_category_id)
@@ -3301,7 +3300,7 @@ server <- function(input, output, session) {
                   choices = c("Please select category first" = ""))
     }
   })
-
+  
   # Quick Entry form UI outputs
   output$quick_region_ui <- renderUI({
     regions_df <- regions()
@@ -3318,14 +3317,14 @@ server <- function(input, output, session) {
                   selected = default_sel)
     }
   })
-
+  
   output$quick_channel_ui <- renderUI({
     channels_df <- channels()
     selectInput("quick_channel", "Contact Channel *",
                 choices = setNames(channels_df$channel_id, channels_df$channel_name),
                 selected = 1)
   })
-
+  
   output$quick_category_ui <- renderUI({
     cats <- categories()
     if (nrow(cats) > 0) {
@@ -3336,7 +3335,7 @@ server <- function(input, output, session) {
                   choices = c("Loading categories..." = ""))
     }
   })
-
+  
   output$quick_subcategory_ui <- renderUI({
     subcats <- quick_subcategories()
     if (nrow(subcats) > 0) {
@@ -3505,17 +3504,17 @@ server <- function(input, output, session) {
   observeEvent(input$manual_refresh_dashboard, {
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
   })
-
+  
   # Last refresh time tracker
   last_refresh <- reactiveVal(Sys.time())
-
+  
   # New prominent refresh button handler
   observeEvent(input$refresh_case_summary, {
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
     last_refresh(Sys.time())
     showNotification("Dashboard data refreshed!", type = "message", duration = 3)
   })
-
+  
   # Display last refresh time
   output$last_refresh_time <- renderText({
     refresh_time <- last_refresh()
@@ -3613,11 +3612,11 @@ server <- function(input, output, session) {
     updateSelectInput(session, "category_id", selected = "")
     updateSelectInput(session, "priority", selected = "Medium")
   })
-
+  
   # ========================================
   # Quick Entry Mode Logic
   # ========================================
-
+  
   # Toggle between Full Case and Quick Entry forms
   observeEvent(input$entry_mode, {
     if (input$entry_mode == "quick") {
@@ -3628,12 +3627,12 @@ server <- function(input, output, session) {
       shinyjs::hide("quick_entry_form")
     }
   })
-
+  
   # Switch to Full Case button
   observeEvent(input$switch_to_full, {
     updateRadioGroupButtons(session, "entry_mode", selected = "full")
   })
-
+  
   # Clear quick entry form
   observeEvent(input$clear_quick_form, {
     updateSelectInput(session, "quick_category_id", selected = "")
@@ -3642,34 +3641,34 @@ server <- function(input, output, session) {
     updateTextInput(session, "quick_teacher_phone", value = "")
     updateTextAreaInput(session, "quick_note", value = "")
   })
-
+  
   # Quick entry counter invalidator
   quick_entry_invalidator <- reactiveVal(0)
-
+  
   # Save quick entry
   observeEvent(input$save_quick_case, {
     req(input$quick_category_id)
-
+    
     if (input$quick_category_id == "") {
       showNotification("Please select a category", type = "warning")
       return()
     }
-
+    
     # Determine status based on outcome
     outcome <- input$quick_outcome
     status <- switch(outcome,
-      "Resolved" = "Resolved",
-      "Info Provided" = "Resolved",
-      "Referred" = "Resolved",
-      "Pending" = "In Progress",
-      "Resolved"
+                     "Resolved" = "Resolved",
+                     "Info Provided" = "Resolved",
+                     "Referred" = "Resolved",
+                     "Pending" = "In Progress",
+                     "Resolved"
     )
-
+    
     # Get category name for auto-generated summary
     cats <- categories()
     cat_name <- cats$category_name[cats$category_id == as.integer(input$quick_category_id)]
     if (length(cat_name) == 0) cat_name <- "General"
-
+    
     # Build summary from outcome + optional note
     note <- trimws(input$quick_note %or% "")
     auto_summary <- if (nchar(note) >= 5) {
@@ -3677,13 +3676,13 @@ server <- function(input, output, session) {
     } else {
       paste0("[Quick] ", cat_name, " - ", outcome)
     }
-
+    
     sub_id <- if (!is.null(input$quick_subcategory_id) && input$quick_subcategory_id != "") {
       as.integer(input$quick_subcategory_id)
     } else {
       NULL
     }
-
+    
     success <- insert_ticket(
       con = con(),
       region_id = input$quick_region %or% 1,
@@ -3702,7 +3701,7 @@ server <- function(input, output, session) {
       quick_outcome = outcome,
       status = status
     )
-
+    
     if (success) {
       uid <- current_user_id()
       tryCatch({ log_activity(pool, uid, "Quick Entry", paste("Category:", cat_name, "| Outcome:", outcome)) }, error = function(e) {})
@@ -3715,7 +3714,7 @@ server <- function(input, output, session) {
       quick_entry_invalidator(quick_entry_invalidator() + 1)
     }
   })
-
+  
   # Today's quick entry count
   output$quick_entry_today_count <- renderUI({
     quick_entry_invalidator()
@@ -3723,21 +3722,21 @@ server <- function(input, output, session) {
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
         count <- dbGetQuery(con(),
-          "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE() AND region_id = ?",
-          params = list(forced_region))$cnt
+                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE() AND region_id = ?",
+                            params = list(forced_region))$cnt
       } else {
         count <- dbGetQuery(con(),
-          "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE()")$cnt
+                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE()")$cnt
       }
       if (count > 0) {
         tags$span(style = "display: inline-block; padding: 6px 14px; background: #e8f5e9; border-radius: 20px; font-weight: 600; color: #2e7d32;",
-          icon("bolt"), paste(count, "quick entries today"))
+                  icon("bolt"), paste(count, "quick entries today"))
       } else {
         NULL
       }
     }, error = function(e) NULL)
   })
-
+  
   # Quick entry summary for today
   output$quick_entry_summary <- renderUI({
     quick_entry_invalidator()
@@ -3745,23 +3744,23 @@ server <- function(input, output, session) {
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
         summary_data <- dbGetQuery(con(),
-          "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
+                                   "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
            WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE() AND t.region_id = ?
            GROUP BY c.category_name, t.quick_outcome
            ORDER BY cnt DESC",
-          params = list(forced_region))
+                                   params = list(forced_region))
       } else {
         summary_data <- dbGetQuery(con(),
-          "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
+                                   "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
            WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE()
            GROUP BY c.category_name, t.quick_outcome
            ORDER BY cnt DESC")
       }
-
+      
       if (nrow(summary_data) == 0) {
         div(style = "text-align: center; color: #999; padding: 10px;",
             icon("info-circle"), " No quick entries logged today yet.")
@@ -3769,34 +3768,34 @@ server <- function(input, output, session) {
         total <- sum(summary_data$cnt)
         resolved <- sum(summary_data$cnt[summary_data$quick_outcome %in% c("Resolved", "Info Provided", "Referred")])
         pending <- sum(summary_data$cnt[summary_data$quick_outcome == "Pending"])
-
+        
         div(
           h5("Today's Quick Entry Summary", style = "color: #1e3a8a;"),
           fluidRow(
             column(4, div(style = "text-align: center; padding: 10px; background: #e3f2fd; border-radius: 8px;",
-              h3(total, style = "margin: 0; color: #1565c0;"), tags$small("Total Logged"))),
+                          h3(total, style = "margin: 0; color: #1565c0;"), tags$small("Total Logged"))),
             column(4, div(style = "text-align: center; padding: 10px; background: #e8f5e9; border-radius: 8px;",
-              h3(resolved, style = "margin: 0; color: #2e7d32;"), tags$small("Resolved"))),
+                          h3(resolved, style = "margin: 0; color: #2e7d32;"), tags$small("Resolved"))),
             column(4, div(style = "text-align: center; padding: 10px; background: #fff3e0; border-radius: 8px;",
-              h3(pending, style = "margin: 0; color: #e65100;"), tags$small("Pending")))
+                          h3(pending, style = "margin: 0; color: #e65100;"), tags$small("Pending")))
           ),
           if (nrow(summary_data) > 0) {
             div(style = "margin-top: 10px;",
-              tags$table(class = "table table-condensed table-sm",
-                style = "font-size: 0.9em;",
-                tags$thead(tags$tr(
-                  tags$th("Category"), tags$th("Outcome"), tags$th("Count")
-                )),
-                tags$tbody(
-                  lapply(1:nrow(summary_data), function(i) {
-                    tags$tr(
-                      tags$td(escape_html(summary_data$category_name[i])),
-                      tags$td(escape_html(summary_data$quick_outcome[i])),
-                      tags$td(tags$b(summary_data$cnt[i]))
-                    )
-                  })
+                tags$table(class = "table table-condensed table-sm",
+                           style = "font-size: 0.9em;",
+                           tags$thead(tags$tr(
+                             tags$th("Category"), tags$th("Outcome"), tags$th("Count")
+                           )),
+                           tags$tbody(
+                             lapply(1:nrow(summary_data), function(i) {
+                               tags$tr(
+                                 tags$td(escape_html(summary_data$category_name[i])),
+                                 tags$td(escape_html(summary_data$quick_outcome[i])),
+                                 tags$td(tags$b(summary_data$cnt[i]))
+                               )
+                             })
+                           )
                 )
-              )
             )
           }
         )
@@ -3885,26 +3884,26 @@ server <- function(input, output, session) {
   output$recent_cases_table <- DT::renderDataTable({
     data <- recent_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No recent cases"))
-
+    
     # Ensure entry_mode column exists (backwards compatibility)
     if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
-
+    
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, category_name, priority, status, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
         teacher_name = ifelse(entry_mode == "quick",
-          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
-                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
-          escape_html_vec(teacher_name)),
+                              paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                                     ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+                              escape_html_vec(teacher_name)),
         category_name = escape_html_vec(category_name),
         case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id, -entry_mode)
-
+    
     DT::datatable(display_data,
                   options = list(
                     pageLength = 10,
@@ -3920,19 +3919,19 @@ server <- function(input, output, session) {
   output$my_cases_table <- DT::renderDataTable({
     data <- my_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-
+    
     # Ensure entry_mode column exists (backwards compatibility)
     if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
-
+    
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, category_name, priority, status, hours_open, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
         teacher_name = ifelse(entry_mode == "quick",
-          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
-                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
-          escape_html_vec(teacher_name)),
+                              paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                                     ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+                              escape_html_vec(teacher_name)),
         school_name = escape_html_vec(school_name),
         category_name = escape_html_vec(category_name),
         case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
@@ -3941,7 +3940,7 @@ server <- function(input, output, session) {
         hours_open = paste(round(as.numeric(hours_open)), "hours")
       ) %>%
       select(-ticket_id, -entry_mode)
-
+    
     DT::datatable(display_data,
                   options = list(
                     pageLength = 15,
@@ -3957,19 +3956,19 @@ server <- function(input, output, session) {
   output$all_cases_table <- DT::renderDataTable({
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-
+    
     # Ensure entry_mode column exists (backwards compatibility)
     if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
-
+    
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status, entry_mode) %>%
       mutate(
         created_at = format(as.POSIXct(created_at), "%Y-%m-%d %H:%M"),
         # SECURITY: Escape user-controlled data before rendering as HTML
         teacher_name = ifelse(entry_mode == "quick",
-          paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
-                 ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
-          escape_html_vec(teacher_name)),
+                              paste0('<span class="badge" style="background:#16a085;color:#fff;font-size:10px;margin-right:4px;">Quick</span>',
+                                     ifelse(is.na(teacher_name) | teacher_name == "", "<em style=\'color:#999\'>-</em>", escape_html_vec(teacher_name))),
+                              escape_html_vec(teacher_name)),
         school_name = escape_html_vec(school_name),
         district = escape_html_vec(district),
         category_name = escape_html_vec(category_name),
@@ -3978,7 +3977,7 @@ server <- function(input, output, session) {
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id, -entry_mode)
-
+    
     DT::datatable(display_data,
                   options = list(
                     pageLength = 20,
@@ -4019,7 +4018,7 @@ server <- function(input, output, session) {
   observeEvent(input$view_case_id, {
     if (!is.null(input$view_case_id)) {
       cat("Opening case details for ticket_id:", input$view_case_id, "\n")
-
+      
       # Check region access for regional users
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
@@ -4028,13 +4027,13 @@ server <- function(input, output, session) {
           dbGetQuery(con(), "SELECT region_id FROM tickets WHERE ticket_id = ?",
                      params = list(input$view_case_id))
         }, error = function(e) data.frame())
-
+        
         if (nrow(case_region) == 0 || case_region$region_id[1] != forced_region) {
           showNotification("Access denied: This case is not in your region.", type = "error")
           return()
         }
       }
-
+      
       selected_case_id(input$view_case_id)
       runjs("$('#caseDetailsModal').modal('show');")
     }
@@ -4043,15 +4042,15 @@ server <- function(input, output, session) {
   # NEW: Render Case Details Content with improved error handling
   output$case_details_content <- renderUI({
     req(selected_case_id())
-
+    
     case_data <- get_case_details(con(), selected_case_id())
     actions_data <- get_case_actions(con(), selected_case_id())
     followups_data <- get_case_followups(con(), selected_case_id())
-
+    
     if (is.null(case_data)) {
       return(div(h3("Case not found"), class = "text-center"))
     }
-
+    
     # Safe helper function for handling NULL/NA values
     safe_value <- function(x, default = "Not provided") {
       if (is.null(x) || is.na(x) || x == "") default else as.character(x)
@@ -4169,7 +4168,7 @@ server <- function(input, output, session) {
             }
           )
       ),
-
+      
       # Follow-up History Section
       div(class = "info-card", style = "margin-bottom: 20px;",
           h4("Follow-up History", style = "color: #1e3a8a; margin-bottom: 15px;"),
@@ -4178,30 +4177,30 @@ server <- function(input, output, session) {
               lapply(1:nrow(followups_data), function(i) {
                 fu <- followups_data[i, ]
                 status_color <- switch(safe_value(fu$urgency, "Upcoming"),
-                  "Completed" = "#10b981",
-                  "Overdue" = "#dc2626",
-                  "Due Today" = "#f59e0b",
-                  "#3b82f6"
+                                       "Completed" = "#10b981",
+                                       "Overdue" = "#dc2626",
+                                       "Due Today" = "#f59e0b",
+                                       "#3b82f6"
                 )
                 div(style = "padding: 12px; margin-bottom: 10px; background: #f8fafc; border-radius: 6px; border-left: 4px solid; border-left-color: inherit;",
                     style = paste0("border-left-color: ", status_color, ";"),
                     fluidRow(
                       column(8,
-                        div(style = "font-weight: 600; color: #1e3a8a;",
-                            paste("Follow-up:", format(as.Date(fu$follow_up_date), "%Y-%m-%d"))),
-                        if (!is.null(fu$follow_up_notes) && fu$follow_up_notes != "" && !is.na(fu$follow_up_notes)) {
-                          div(style = "margin-top: 5px; color: #374151; font-size: 13px;", fu$follow_up_notes)
-                        },
-                        div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
-                            paste("Scheduled by:", safe_value(fu$created_by_name, "Unknown")))
+                             div(style = "font-weight: 600; color: #1e3a8a;",
+                                 paste("Follow-up:", format(as.Date(fu$follow_up_date), "%Y-%m-%d"))),
+                             if (!is.null(fu$follow_up_notes) && fu$follow_up_notes != "" && !is.na(fu$follow_up_notes)) {
+                               div(style = "margin-top: 5px; color: #374151; font-size: 13px;", fu$follow_up_notes)
+                             },
+                             div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
+                                 paste("Scheduled by:", safe_value(fu$created_by_name, "Unknown")))
                       ),
                       column(4, style = "text-align: right;",
-                        tags$span(safe_value(fu$urgency, "Upcoming"),
-                                  style = paste0("display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; background: ", status_color, ";")),
-                        if (safe_value(fu$urgency, "") == "Completed" && !is.null(fu$completed_by_name) && !is.na(fu$completed_by_name)) {
-                          div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
-                              paste("Completed by:", fu$completed_by_name))
-                        }
+                             tags$span(safe_value(fu$urgency, "Upcoming"),
+                                       style = paste0("display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; color: white; background: ", status_color, ";")),
+                             if (safe_value(fu$urgency, "") == "Completed" && !is.null(fu$completed_by_name) && !is.na(fu$completed_by_name)) {
+                               div(style = "margin-top: 5px; font-size: 11px; color: #6b7280;",
+                                   paste("Completed by:", fu$completed_by_name))
+                             }
                       )
                     )
                 )
@@ -4212,7 +4211,7 @@ server <- function(input, output, session) {
                 "No follow-ups scheduled for this case.")
           }
       ),
-
+      
       # Action Buttons
       fluidRow(
         column(12,
@@ -4416,58 +4415,58 @@ server <- function(input, output, session) {
       runjs("$('#escalationReasonModal').modal('show');")
     }
   })
-
+  
   # Confirm escalation with reason
   observeEvent(input$confirm_escalation_with_reason, {
     req(selected_case_id())
     req(input$escalation_reason_text)
-
+    
     if (nchar(trimws(input$escalation_reason_text)) < 10) {
       showNotification("Please provide a detailed escalation reason (at least 10 characters)", type = "warning")
       return()
     }
-
+    
     uid <- current_user_id()
     reason <- input$escalation_reason_text
     level <- input$escalation_level
-
+    
     # Update case status and add escalation reason
     success <- tryCatch({
       # Update ticket status
       dbExecute(con(),
-        "UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), escalation_reason = ? WHERE ticket_id = ?",
-        params = list(reason, selected_case_id()))
-
+                "UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), escalation_reason = ? WHERE ticket_id = ?",
+                params = list(reason, selected_case_id()))
+      
       # Log the action
       add_case_note(con(), selected_case_id(), paste("ESCALATED (Level", level, "):", reason), uid)
-
+      
       # Insert into escalations table
       national_pro_user <- dbGetQuery(con(), "SELECT user_id FROM users WHERE email = 'enquiry.nationalprooffice@gmail.com' LIMIT 1")
       if (nrow(national_pro_user) > 0) {
         dbExecute(con(),
-          "INSERT INTO escalations (ticket_id, escalated_by_user_id, escalated_to_user_id, escalation_reason, escalation_method) VALUES (?, ?, ?, ?, 'System')",
-          params = list(selected_case_id(), uid, national_pro_user$user_id[1], reason))
+                  "INSERT INTO escalations (ticket_id, escalated_by_user_id, escalated_to_user_id, escalation_reason, escalation_method) VALUES (?, ?, ?, ?, 'System')",
+                  params = list(selected_case_id(), uid, national_pro_user$user_id[1], reason))
       }
-
+      
       TRUE
     }, error = function(e) {
       showNotification(paste("Escalation error:", e$message), type = "error")
       FALSE
     })
-
+    
     if (success) {
       tryCatch({ log_activity(pool, uid, "Escalate Case", paste("Case ID:", selected_case_id(), "Level:", level)) }, error = function(e) {})
-
+      
       # Close the reason modal and show escalation popup
       runjs("$('#escalationReasonModal').modal('hide');")
-
+      
       # Store escalated case info for popup
       rv$last_escalated_case <- get_case_details(con(), selected_case_id())
-
+      
       # Show escalation popup
       shinyjs::show("escalationPopupOverlay")
       shinyjs::show("escalationPopup")
-
+      
       showNotification("Case escalated successfully - National PRO Office notified", type = "warning")
       shinyjs::click("refresh_my_cases")
       shinyjs::click("refresh_all_cases")
@@ -4829,37 +4828,37 @@ server <- function(input, output, session) {
     filename = function() paste0("helpline_analytics_", Sys.Date(), ".xlsx"),
     content = function(file) {
       wb <- createWorkbook()
-
+      
       addWorksheet(wb, "Regional Performance")
       writeData(wb, "Regional Performance", regional_perf())
-
+      
       addWorksheet(wb, "Category Trends")
       writeData(wb, "Category Trends", category_trends())
-
+      
       addWorksheet(wb, "SLA Summary")
       writeData(wb, "SLA Summary", sla_data()$summary)
       writeData(wb, "SLA Summary", sla_data()$by_region, startRow = 5)
-
+      
       addWorksheet(wb, "SLA Overdue")
       writeData(wb, "SLA Overdue", sla_data()$overdue)
-
+      
       addWorksheet(wb, "Time Series")
       writeData(wb, "Time Series", monthly_series())
-
+      
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
-
-
+  
+  
   # ========================================
   # ESCALATION POPUP HANDLERS
   # ========================================
-
+  
   # Render escalation popup content
   output$escalation_popup_content <- renderUI({
     case_data <- rv$last_escalated_case
     if (is.null(case_data)) return(NULL)
-
+    
     tagList(
       tags$p(tags$strong("Case Code:"), " ", case_data$case_code),
       tags$p(tags$strong("Teacher:"), " ", case_data$teacher_name),
@@ -4868,14 +4867,14 @@ server <- function(input, output, session) {
       tags$p(tags$strong("Priority:"), " ", case_data$priority)
     )
   })
-
+  
   # Close escalation popup
   observeEvent(input$close_escalation_popup, {
     shinyjs::hide("escalationPopupOverlay")
     shinyjs::hide("escalationPopup")
     rv$last_escalated_case <- NULL
   })
-
+  
   # View escalated case from popup
   observeEvent(input$view_escalated_case, {
     shinyjs::hide("escalationPopupOverlay")
@@ -4885,7 +4884,7 @@ server <- function(input, output, session) {
       runjs("$('#caseDetailsModal').modal('show');")
     }
   })
-
+  
   # Go to escalated cases tab
   observeEvent(input$go_to_escalated_tab, {
     shinyjs::hide("escalationPopupOverlay")
@@ -4893,18 +4892,18 @@ server <- function(input, output, session) {
     rv$last_escalated_case <- NULL
     updateTabItems(session, "sidebar_menu", "escalated_cases")
   })
-
-
+  
+  
   # ========================================
   # ESCALATED CASES TAB HANDLERS
   # ========================================
-
+  
   # Check if user is National PRO Office
   is_national_pro <- reactive({
     if (!isTRUE(rv$logged_in) || is.null(rv$user)) return(FALSE)
     rv$user$email == "enquiry.nationalprooffice@gmail.com" || rv$user$role == "National Admin"
   })
-
+  
   # Escalated tab title - only shows for National PRO Office
   output$escalated_tab_title <- renderUI({
     if (is_national_pro()) {
@@ -4913,20 +4912,20 @@ server <- function(input, output, session) {
       NULL
     }
   })
-
+  
   # Escalated cases panel - full content for National PRO Office, message for others
   output$escalated_cases_panel <- renderUI({
     if (!is_national_pro()) {
       return(
         div(style = "text-align: center; padding: 50px;",
-          icon("lock", style = "font-size: 48px; color: #6b7280;"),
-          h4("Access Restricted", style = "color: #374151; margin-top: 20px;"),
-          p("Escalated cases are managed by the National PRO Office.", style = "color: #6b7280;"),
-          p("If you need to view escalated cases, please contact: ", tags$strong("enquiry.nationalprooffice@gmail.com"))
+            icon("lock", style = "font-size: 48px; color: #6b7280;"),
+            h4("Access Restricted", style = "color: #374151; margin-top: 20px;"),
+            p("Escalated cases are managed by the National PRO Office.", style = "color: #6b7280;"),
+            p("If you need to view escalated cases, please contact: ", tags$strong("enquiry.nationalprooffice@gmail.com"))
         )
       )
     }
-
+    
     # Full escalated cases panel for National PRO Office
     tagList(
       # Summary stats
@@ -4936,67 +4935,67 @@ server <- function(input, output, session) {
         valueBoxOutput("esc_today_box", width = 3),
         valueBoxOutput("esc_critical_box", width = 3)
       ),
-
+      
       fluidRow(
         box(
           title = "Escalated Cases - National Review Queue",
           status = "danger", solidHeader = TRUE,
           width = 12,
-
+          
           fluidRow(
             column(3,
-              selectInput("esc_region_filter", "Region",
-                          choices = c("All Regions" = ""))
+                   selectInput("esc_region_filter", "Region",
+                               choices = c("All Regions" = ""))
             ),
             column(3,
-              selectInput("esc_priority_filter", "Priority",
-                          choices = c("All" = "", "Urgent", "High", "Medium", "Low"))
+                   selectInput("esc_priority_filter", "Priority",
+                               choices = c("All" = "", "Urgent", "High", "Medium", "Low"))
             ),
             column(3,
-              selectInput("esc_category_filter", "Category",
-                          choices = c("All Categories" = ""))
+                   selectInput("esc_category_filter", "Category",
+                               choices = c("All Categories" = ""))
             ),
             column(3,
-              actionButton("refresh_escalated", "Refresh", class = "btn-danger",
-                           style = "margin-top: 25px; width: 100%;", icon = icon("sync"))
+                   actionButton("refresh_escalated", "Refresh", class = "btn-danger",
+                                style = "margin-top: 25px; width: 100%;", icon = icon("sync"))
             )
           ),
-
+          
           hr(),
           withSpinner(DT::dataTableOutput("escalated_cases_table")),
-
+          
           hr(),
           p(tags$small("All escalations are sent to enquiry.nationalprooffice@gmail.com", style = "color: #6b7280;"))
         )
       )
     )
   })
-
+  
   # Escalated cases valueBox outputs
   output$esc_total_box <- renderValueBox({
     valueBox(nrow(escalated_cases_data()), "Total Escalated", icon = icon("exclamation-circle"), color = "red")
   })
-
+  
   output$esc_pending_box <- renderValueBox({
     valueBox(sum(escalated_cases_data()$status == "Escalated", na.rm = TRUE), "Pending Review", icon = icon("clock"), color = "yellow")
   })
-
+  
   output$esc_today_box <- renderValueBox({
     data <- escalated_cases_data()
     count <- if (nrow(data) == 0) 0 else sum(as.Date(data$escalated_at) == Sys.Date(), na.rm = TRUE)
     valueBox(count, "Today", icon = icon("calendar-day"), color = "orange")
   })
-
+  
   output$esc_critical_box <- renderValueBox({
     data <- escalated_cases_data()
     count <- if (nrow(data) == 0) 0 else sum(data$priority %in% c("High", "Urgent"), na.rm = TRUE)
     valueBox(count, "Critical", icon = icon("fire"), color = "maroon")
   })
-
+  
   # Reactive data for escalated cases
   escalated_cases_data <- reactive({
     input$refresh_escalated  # Dependency for refresh
-
+    
     tryCatch({
       base_query <- "
         SELECT t.ticket_id, t.case_code, t.escalated_at, t.created_at,
@@ -5010,27 +5009,27 @@ server <- function(input, output, session) {
         LEFT JOIN issue_categories c ON t.category_id = c.category_id
         WHERE t.status = 'Escalated'
       "
-
+      
       params <- list()
-
+      
       # Apply filters
       if (!is.null(input$esc_region_filter) && input$esc_region_filter != "") {
         base_query <- paste0(base_query, " AND r.region_name = ?")
         params <- c(params, input$esc_region_filter)
       }
-
+      
       if (!is.null(input$esc_priority_filter) && input$esc_priority_filter != "") {
         base_query <- paste0(base_query, " AND t.priority = ?")
         params <- c(params, input$esc_priority_filter)
       }
-
+      
       if (!is.null(input$esc_category_filter) && input$esc_category_filter != "") {
         base_query <- paste0(base_query, " AND c.category_name = ?")
         params <- c(params, input$esc_category_filter)
       }
-
+      
       base_query <- paste0(base_query, " ORDER BY t.escalated_at DESC")
-
+      
       if (length(params) > 0) {
         dbGetQuery(con(), base_query, params = params)
       } else {
@@ -5040,34 +5039,34 @@ server <- function(input, output, session) {
       data.frame()
     })
   })
-
+  
   # Escalated cases counts
   output$escalated_total_count <- renderText({
     nrow(escalated_cases_data())
   })
-
+  
   output$escalated_pending_count <- renderText({
     sum(escalated_cases_data()$status == "Escalated", na.rm = TRUE)
   })
-
+  
   output$escalated_today_count <- renderText({
     data <- escalated_cases_data()
     if (nrow(data) == 0) return("0")
     sum(as.Date(data$escalated_at) == Sys.Date(), na.rm = TRUE)
   })
-
+  
   output$escalated_critical_count <- renderText({
     data <- escalated_cases_data()
     if (nrow(data) == 0) return("0")
     sum(data$priority %in% c("High", "Urgent"), na.rm = TRUE)
   })
-
+  
   # Escalated cases table
   # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$escalated_cases_table <- DT::renderDataTable({
     data <- escalated_cases_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No escalated cases")))
-
+    
     display_data <- data %>%
       mutate(
         escalated_at = format(as.POSIXct(escalated_at), "%Y-%m-%d %H:%M"),
@@ -5081,43 +5080,43 @@ server <- function(input, output, session) {
         hours_since_escalation = paste(hours_since_escalation, "hours ago")
       ) %>%
       select(case_code, escalated_at, teacher_name, region_name, category_name, priority, hours_since_escalation, summary)
-
+    
     datatable(display_data,
               options = list(pageLength = 15, scrollX = TRUE, order = list(list(1, 'desc'))),
               escape = FALSE, rownames = FALSE,
               selection = 'single',
               colnames = c("Case", "Escalated At", "Teacher", "Region", "Category", "Priority", "Time Since", "Summary"))
   })
-
+  
   # Update region filter choices for escalated cases
   observe({
     regions <- get_regions(con())
     updateSelectInput(session, "esc_region_filter",
                       choices = c("All Regions" = "", regions$region_name))
   })
-
+  
   # Update category filter choices for escalated cases
   observe({
     categories <- get_categories(con())
     updateSelectInput(session, "esc_category_filter",
                       choices = c("All Categories" = "", categories$category_name))
   })
-
-
+  
+  
   # ========================================
   # FOLLOW-UP SCHEDULING HANDLERS
   # ========================================
-
+  
   # Follow-up Alert Widget for Dashboard
   output$followup_alert_widget <- renderUI({
     data <- follow_ups_data()
     if (nrow(data) == 0) return(NULL)
-
+    
     overdue_count <- sum(data$urgency == "Overdue", na.rm = TRUE)
     today_count <- sum(data$urgency == "Due Today", na.rm = TRUE)
-
+    
     if (overdue_count == 0 && today_count == 0) return(NULL)
-
+    
     # Build alert message
     alert_parts <- c()
     if (overdue_count > 0) {
@@ -5126,32 +5125,32 @@ server <- function(input, output, session) {
     if (today_count > 0) {
       alert_parts <- c(alert_parts, paste0("<strong>", today_count, " due today</strong>"))
     }
-
+    
     alert_class <- if (overdue_count > 0) "alert-danger" else "alert-warning"
-
+    
     fluidRow(
       column(12,
-        div(class = paste("alert", alert_class), style = "margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;",
-            div(
-              icon("bell", style = "margin-right: 10px;"),
-              HTML(paste0("Follow-up Alert: You have ", paste(alert_parts, collapse = " and "), " follow-ups that need attention."))
-            ),
-            actionButton("go_to_followups", "View Follow-ups", class = "btn btn-sm btn-outline-dark")
-        )
+             div(class = paste("alert", alert_class), style = "margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between;",
+                 div(
+                   icon("bell", style = "margin-right: 10px;"),
+                   HTML(paste0("Follow-up Alert: You have ", paste(alert_parts, collapse = " and "), " follow-ups that need attention."))
+                 ),
+                 actionButton("go_to_followups", "View Follow-ups", class = "btn btn-sm btn-outline-dark")
+             )
       )
     )
   })
-
+  
   # Navigate to Follow-ups tab when alert button clicked
   observeEvent(input$go_to_followups, {
     updateTabsetPanel(session, "main_tabs", selected = "Follow-ups")
   })
-
+  
   # Reactive data for follow-ups - filtered by user's region
   follow_ups_data <- reactive({
     input$refresh_followups  # Dependency
     forced_region <- user_region_id()  # Get user's region restriction
-
+    
     tryCatch({
       # SECURITY FIX: Use parameterized query to prevent SQL injection
       if (!is.null(forced_region)) {
@@ -5197,58 +5196,58 @@ server <- function(input, output, session) {
       data.frame()
     })
   })
-
+  
   # Follow-up counts (text outputs)
   output$followup_overdue_count <- renderText({
     data <- follow_ups_data()
     if (nrow(data) == 0) return("0")
     sum(data$urgency == "Overdue", na.rm = TRUE)
   })
-
+  
   output$followup_today_count <- renderText({
     data <- follow_ups_data()
     if (nrow(data) == 0) return("0")
     sum(data$urgency == "Due Today", na.rm = TRUE)
   })
-
+  
   output$followup_week_count <- renderText({
     data <- follow_ups_data()
     if (nrow(data) == 0) return("0")
     sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
   })
-
+  
   output$followup_total_pending <- renderText({
     nrow(follow_ups_data())
   })
-
+  
   # Follow-up valueBox outputs (for Dashboard tab)
   output$followup_overdue_box <- renderValueBox({
     data <- follow_ups_data()
     count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Overdue", na.rm = TRUE)
     valueBox(count, "Overdue", icon = icon("exclamation-triangle"), color = "red")
   })
-
+  
   output$followup_today_box <- renderValueBox({
     data <- follow_ups_data()
     count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Due Today", na.rm = TRUE)
     valueBox(count, "Due Today", icon = icon("calendar-day"), color = "yellow")
   })
-
+  
   output$followup_week_box <- renderValueBox({
     data <- follow_ups_data()
     count <- if (nrow(data) == 0) 0 else sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
     valueBox(count, "This Week", icon = icon("calendar-week"), color = "blue")
   })
-
+  
   output$followup_total_box <- renderValueBox({
     valueBox(nrow(follow_ups_data()), "Total Pending", icon = icon("clock"), color = "purple")
   })
-
+  
   # Follow-up region filter UI - region-restricted based on user role
   output$followup_region_filter_ui <- renderUI({
     regions_df <- get_regions(con())
     forced_region <- user_region_id()
-
+    
     if (!is.null(forced_region)) {
       # Regional users can only see their own region - no dropdown needed
       region_row <- regions_df[regions_df$region_id == forced_region, ]
@@ -5261,22 +5260,22 @@ server <- function(input, output, session) {
                   choices = c("All Regions" = "", regions_df$region_name))
     }
   })
-
+  
   # Pending follow-ups table with complete action
   # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$pending_followups_table <- DT::renderDataTable({
     data <- follow_ups_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No pending follow-ups")))
-
+    
     # Apply filters
     if (!is.null(input$followup_urgency_filter) && input$followup_urgency_filter != "") {
       data <- data %>% filter(urgency == input$followup_urgency_filter)
     }
-
+    
     if (!is.null(input$followup_region_filter) && input$followup_region_filter != "") {
       data <- data %>% filter(region_name == input$followup_region_filter)
     }
-
+    
     display_data <- data %>%
       mutate(
         # SECURITY: Escape user-controlled data before rendering as HTML
@@ -5296,13 +5295,13 @@ server <- function(input, output, session) {
         )
       ) %>%
       select(case_code, teacher_name, region_name, follow_up_date, urgency, follow_up_notes, actions)
-
+    
     datatable(display_data,
               options = list(pageLength = 15, scrollX = TRUE, columnDefs = list(list(width = '100px', targets = 6))),
               escape = FALSE, rownames = FALSE,
               colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Actions"))
   })
-
+  
   # Export follow-ups to Excel
   output$export_followups <- downloadHandler(
     filename = function() {
@@ -5310,7 +5309,7 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       data <- follow_ups_data()
-
+      
       if (nrow(data) == 0) {
         # Create empty workbook with message
         wb <- createWorkbook()
@@ -5319,7 +5318,7 @@ server <- function(input, output, session) {
         saveWorkbook(wb, file, overwrite = TRUE)
         return()
       }
-
+      
       # Apply current filters
       if (!is.null(input$followup_urgency_filter) && input$followup_urgency_filter != "") {
         data <- data %>% filter(urgency == input$followup_urgency_filter)
@@ -5327,7 +5326,7 @@ server <- function(input, output, session) {
       if (!is.null(input$followup_region_filter) && input$followup_region_filter != "") {
         data <- data %>% filter(region_name == input$followup_region_filter)
       }
-
+      
       # Prepare export data
       export_data <- data %>%
         select(case_code, teacher_name, teacher_phone, region_name,
@@ -5343,36 +5342,36 @@ server <- function(input, output, session) {
           `Notes` = follow_up_notes,
           `Case Status` = ticket_status
         )
-
+      
       # Create workbook with styling
       wb <- createWorkbook()
       addWorksheet(wb, "Follow-ups")
-
+      
       # Header style
       headerStyle <- createStyle(
         fontSize = 12, fontColour = "#FFFFFF", halign = "center",
         fgFill = "#1e3a8a", border = "TopBottomLeftRight",
         textDecoration = "bold"
       )
-
+      
       # Write data
       writeData(wb, "Follow-ups", export_data, headerStyle = headerStyle)
-
+      
       # Conditional formatting for urgency
       overdueStyle <- createStyle(fontColour = "#dc2626", textDecoration = "bold")
       todayStyle <- createStyle(fontColour = "#f59e0b", textDecoration = "bold")
-
+      
       # Auto width columns
       setColWidths(wb, "Follow-ups", cols = 1:ncol(export_data), widths = "auto")
-
+      
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
-
+  
   # Mark follow-up as complete handler
   observeEvent(input$complete_followup_id, {
     req(input$complete_followup_id)
-
+    
     tryCatch({
       # Update follow-up status to Completed
       dbExecute(con(), "
@@ -5382,55 +5381,55 @@ server <- function(input, output, session) {
             completed_by_user_id = ?
         WHERE follow_up_id = ?
       ", params = list(current_user_id(), input$complete_followup_id))
-
+      
       # Log the action in ticket_actions
       followup_info <- dbGetQuery(con(),
-        "SELECT ticket_id FROM follow_ups WHERE follow_up_id = ?",
-        params = list(input$complete_followup_id))
-
+                                  "SELECT ticket_id FROM follow_ups WHERE follow_up_id = ?",
+                                  params = list(input$complete_followup_id))
+      
       if (nrow(followup_info) > 0) {
         dbExecute(con(), "
           INSERT INTO ticket_actions (ticket_id, action_type, action_by_user_id, notes)
           VALUES (?, 'note', ?, 'Follow-up completed')
         ", params = list(followup_info$ticket_id[1], current_user_id()))
       }
-
+      
       showNotification("Follow-up marked as complete!", type = "message")
-
+      
       # Refresh the follow-ups data
       shinyjs::click("refresh_followups")
     }, error = function(e) {
       showNotification(paste("Error completing follow-up:", e$message), type = "error")
     })
   })
-
+  
   # Schedule follow-up handler - restricted to user's region
   observeEvent(input$schedule_followup, {
     req(input$followup_case_search)
     req(input$followup_date)
-
+    
     forced_region <- user_region_id()
-
+    
     # Find the case - restricted to user's region for regional users
     case <- tryCatch({
       if (!is.null(forced_region)) {
         # Regional users can only schedule follow-ups for cases in their region
         dbGetQuery(con(),
-          "SELECT ticket_id, case_code FROM tickets
+                   "SELECT ticket_id, case_code FROM tickets
            WHERE (case_code LIKE ? OR teacher_name LIKE ?) AND region_id = ? LIMIT 1",
-          params = list(paste0("%", input$followup_case_search, "%"),
-                       paste0("%", input$followup_case_search, "%"),
-                       forced_region))
+                   params = list(paste0("%", input$followup_case_search, "%"),
+                                 paste0("%", input$followup_case_search, "%"),
+                                 forced_region))
       } else {
         # National users can schedule follow-ups for any case
         dbGetQuery(con(),
-          "SELECT ticket_id, case_code FROM tickets
+                   "SELECT ticket_id, case_code FROM tickets
            WHERE case_code LIKE ? OR teacher_name LIKE ? LIMIT 1",
-          params = list(paste0("%", input$followup_case_search, "%"),
-                       paste0("%", input$followup_case_search, "%")))
+                   params = list(paste0("%", input$followup_case_search, "%"),
+                                 paste0("%", input$followup_case_search, "%")))
       }
     }, error = function(e) data.frame())
-
+    
     if (nrow(case) == 0) {
       if (!is.null(forced_region)) {
         showNotification("Case not found in your region. Please enter a valid case code or teacher name.", type = "error")
@@ -5439,18 +5438,18 @@ server <- function(input, output, session) {
       }
       return()
     }
-
+    
     # Insert follow-up
     tryCatch({
       dbExecute(con(), "
         INSERT INTO follow_ups (ticket_id, follow_up_date, follow_up_notes, created_by_user_id)
         VALUES (?, ?, ?, ?)
       ", params = list(case$ticket_id[1], input$followup_date, input$followup_notes, current_user_id()))
-
+      
       # Update ticket's next follow-up date
       dbExecute(con(), "UPDATE tickets SET next_follow_up_date = ? WHERE ticket_id = ?",
                 params = list(input$followup_date, case$ticket_id[1]))
-
+      
       showNotification(paste("Follow-up scheduled for", case$case_code[1], "on", input$followup_date), type = "message")
       updateTextInput(session, "followup_case_search", value = "")
       updateTextAreaInput(session, "followup_notes", value = "")
@@ -5458,28 +5457,28 @@ server <- function(input, output, session) {
       showNotification(paste("Error scheduling follow-up:", e$message), type = "error")
     })
   })
-
-
+  
+  
   # ========================================
   # CASE TEMPLATES HANDLERS
   # ========================================
-
+  
   # Reactive data for templates
   templates_data <- reactive({
     input$refresh_templates  # Dependency
-
+    
     tryCatch({
       base_query <- "SELECT * FROM case_templates WHERE is_active = 1"
-
+      
       if (!is.null(input$template_category_filter) && input$template_category_filter != "") {
         base_query <- paste0(base_query, " AND template_category = '", input$template_category_filter, "'")
       }
-
+      
       if (!is.null(input$template_search) && input$template_search != "") {
         search_term <- paste0("%", input$template_search, "%")
         base_query <- paste0(base_query, " AND (template_name LIKE '", search_term, "' OR template_body LIKE '", search_term, "')")
       }
-
+      
       base_query <- paste0(base_query, " ORDER BY template_category, template_name")
       dbGetQuery(con(), base_query)
     }, error = function(e) {
@@ -5497,16 +5496,16 @@ server <- function(input, output, session) {
       )
     })
   })
-
+  
   # Render templates list
   output$templates_list <- renderUI({
     data <- templates_data()
     if (nrow(data) == 0) return(p("No templates found"))
-
+    
     template_cards <- lapply(1:nrow(data), function(i) {
       t <- data[i, ]
       cat_class <- tolower(gsub("/", "-", t$template_category))
-
+      
       div(class = "template-card",
           onclick = paste0("Shiny.setInputValue('selected_template_id', ", t$template_id, ", {priority: 'event'})"),
           div(style = "display: flex; justify-content: space-between; align-items: center;",
@@ -5516,26 +5515,26 @@ server <- function(input, output, session) {
           tags$small(t$template_subject, style = "color: #6b7280;")
       )
     })
-
+    
     do.call(tagList, template_cards)
   })
-
+  
   # Selected template reactive
   selected_template <- reactive({
     req(input$selected_template_id)
     data <- templates_data()
     data[data$template_id == input$selected_template_id, ]
   })
-
+  
   # Render template preview
   output$template_preview <- renderUI({
     if (is.null(input$selected_template_id)) {
       return(p("Select a template to preview", style = "color: #6b7280; text-align: center;"))
     }
-
+    
     t <- selected_template()
     if (nrow(t) == 0) return(NULL)
-
+    
     tagList(
       h5(t$template_name[1]),
       tags$strong("Subject: "), t$template_subject[1],
@@ -5544,74 +5543,74 @@ server <- function(input, output, session) {
                t$template_body[1])
     )
   })
-
+  
   # Quick response text
   output$quick_response_text <- renderText({
     rv$quick_response_text
   })
-
+  
   # Quick response buttons
   observeEvent(input$qr_ack_received, {
     rv$quick_response_text <- "GES Helpline: Your request has been received and logged. You will receive an update within 24-48 hours. Thank you."
   })
-
+  
   observeEvent(input$qr_ack_escalated, {
     rv$quick_response_text <- "GES Helpline: Your case has been escalated to the appropriate office for review. You will be contacted within 4 working hours."
   })
-
+  
   observeEvent(input$qr_ack_processing, {
     rv$quick_response_text <- "GES Helpline: Your case is currently being processed. We will update you on progress."
   })
-
+  
   observeEvent(input$qr_status_pending, {
     rv$quick_response_text <- "We require additional information to proceed with your case. Please provide the requested details at your earliest convenience."
   })
-
+  
   observeEvent(input$qr_status_followup, {
     rv$quick_response_text <- "A follow-up has been scheduled for your case. We will contact you on the scheduled date with an update."
   })
-
+  
   observeEvent(input$qr_status_resolved, {
     rv$quick_response_text <- "GES Helpline: Your case has been resolved. If you need further assistance, please contact us."
   })
-
+  
   observeEvent(input$qr_phrase_understand, {
     rv$quick_response_text <- "I understand your concern. Let me help you resolve this matter."
   })
-
+  
   observeEvent(input$qr_phrase_patience, {
     rv$quick_response_text <- "Thank you for your patience. We are working to address your concern as quickly as possible."
   })
-
+  
   observeEvent(input$qr_phrase_assist, {
     rv$quick_response_text <- "Let me assist you with this matter. I will need a few details to proceed."
   })
-
+  
   observeEvent(input$qr_close_help, {
     rv$quick_response_text <- "Is there anything else I can help you with today?"
   })
-
+  
   observeEvent(input$qr_close_contact, {
     rv$quick_response_text <- "Please feel free to contact the GES Teacher Helpline if you have any further questions."
   })
-
+  
   observeEvent(input$qr_close_reference, {
     rv$quick_response_text <- "Your reference number is [CASE_CODE]. Please keep this for future follow-up."
   })
-
+  
   # Save new template
   observeEvent(input$save_new_template, {
     req(input$new_template_name)
     req(input$new_template_category)
     req(input$new_template_body)
-
+    
     tryCatch({
       dbExecute(con(), "
         INSERT INTO case_templates (template_name, template_category, template_subject, template_body)
         VALUES (?, ?, ?, ?)
       ", params = list(input$new_template_name, input$new_template_category,
                        input$new_template_subject, input$new_template_body))
-
+      
       showNotification("Template saved successfully", type = "message")
       updateTextInput(session, "new_template_name", value = "")
       updateTextInput(session, "new_template_subject", value = "")
@@ -5620,30 +5619,30 @@ server <- function(input, output, session) {
       showNotification(paste("Error saving template:", e$message), type = "error")
     })
   })
-
+  
   # Admin templates table
   output$admin_templates_table <- DT::renderDataTable({
     data <- templates_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No templates")))
-
+    
     display_data <- data %>%
       select(template_id, template_name, template_category, template_subject)
-
+    
     datatable(display_data,
               options = list(pageLength = 10, scrollX = TRUE),
               selection = 'single',
               rownames = FALSE,
               colnames = c("ID", "Name", "Category", "Subject"))
   })
-
-
+  
+  
   # ========================================
   # BULK OPERATIONS HANDLERS
   # ========================================
-
+  
   # Track selected cases for bulk operations
   bulk_selected_cases <- reactiveVal(c())
-
+  
   # Show/hide bulk actions bar based on selection
   observe({
     selected <- input$all_cases_table_rows_selected
@@ -5655,27 +5654,27 @@ server <- function(input, output, session) {
       bulk_selected_cases(c())
     }
   })
-
+  
   # Selected count display
   output$bulk_selected_count <- renderText({
     paste(length(bulk_selected_cases()), "cases selected")
   })
-
+  
   # Bulk update status button
   observeEvent(input$bulk_update_status, {
     if (length(bulk_selected_cases()) > 0) {
       runjs("$('#bulkStatusModal').modal('show');")
     }
   })
-
+  
   # Confirm bulk status update
   observeEvent(input$confirm_bulk_status, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-
+    
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
@@ -5683,27 +5682,27 @@ server <- function(input, output, session) {
         success_count <- success_count + 1
       }, error = function(e) {})
     }
-
+    
     runjs("$('#bulkStatusModal').modal('hide');")
     showNotification(paste("Updated", success_count, "of", length(ticket_ids), "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
   })
-
+  
   # Bulk change priority button
   observeEvent(input$bulk_change_priority, {
     if (length(bulk_selected_cases()) > 0) {
       runjs("$('#bulkPriorityModal').modal('show');")
     }
   })
-
+  
   # Confirm bulk priority change
   observeEvent(input$confirm_bulk_priority, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-
+    
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
@@ -5712,20 +5711,20 @@ server <- function(input, output, session) {
         success_count <- success_count + 1
       }, error = function(e) {})
     }
-
+    
     runjs("$('#bulkPriorityModal').modal('hide');")
     showNotification(paste("Updated priority for", success_count, "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
   })
-
+  
   # Bulk escalate all
   observeEvent(input$bulk_escalate, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-
+    
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
@@ -5735,22 +5734,21 @@ server <- function(input, output, session) {
         success_count <- success_count + 1
       }, error = function(e) {})
     }
-
+    
     showNotification(paste("Escalated", success_count, "cases"), type = "warning")
     shinyjs::click("refresh_all_cases")
   })
-
+  
   # Clear bulk selection
   observeEvent(input$bulk_clear_selection, {
     bulk_selected_cases(c())
     shinyjs::hide("bulk_actions_bar")
   })
-
-
+  
+  
 }
 
 # Run the application
-# Heroku sets the PORT environment variable; fallback to 3838 for local dev
-port <- as.numeric(Sys.getenv("PORT", "3838"))
-shinyApp(ui = ui, server = server, options = list(host = "0.0.0.0", port = port))
+
+shinyApp(ui = ui, server = server)
 
