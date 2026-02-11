@@ -1,9 +1,10 @@
+
 -- GES Teacher Support Helpline & Query Tracking System
 -- Enhanced Database Schema v2 - Aligned with Concept Note
 -- Includes comprehensive category system and workflow management
 
-CREATE DATABASE IF NOT EXISTS teacher_query_7;
-USE teacher_query_7;
+
+  USE oqhm7raqbkfdrtqz;
 
 -- =====================================================
 -- Reference Tables
@@ -438,7 +439,7 @@ INSERT IGNORE INTO users (full_name, email, role, region_id, password_hash) VALU
 ('John Doe', 'john.doe@ges.gov.gh', 'Regional Agent', 1, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
 ('Jane Smith', 'jane.smith@ges.gov.gh', 'Regional Supervisor', 1, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
 ('Robert Johnson', 'robert.johnson@ges.gov.gh', 'National Resolver', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'),
-('Mary Administrator', 'admin@ges.gov.gh', 'National Admin', NULL, '$2b$12$iO8OXKO8pibTOMdbWTdnwuKnicseRPCTPp8R8YC0YggOtTN81qo9y');
+('Mary Administrator', 'admin@ges.gov.gh', 'National Admin', NULL, 'game1990');
 
 -- =====================================================
 -- Triggers for Auto-Updates
@@ -717,7 +718,7 @@ WHERE email IN (
 -- GES Teacher Support Helpline
 -- This script adds tables for Case Templates, Follow-ups, and Escalation tracking
 
-USE teacher_query_7;
+USE oqhm7raqbkfdrtqz;
 
 -- =====================================================
 -- Case Templates - Pre-defined responses for common issues
@@ -1030,3 +1031,109 @@ ALTER TABLE tickets MODIFY COLUMN teacher_phone VARCHAR(40) NULL;
 CREATE INDEX idx_tickets_entry_mode ON tickets(entry_mode, created_at);
 
 SELECT 'Quick Entry Mode schema update complete!' as Status;
+
+
+
+ALTER TABLE tickets ADD COLUMN entry_mode ENUM('full','quick') NOT NULL DEFAULT 'full';
+ALTER TABLE tickets ADD COLUMN quick_outcome VARCHAR(50) NULL;
+ALTER TABLE tickets MODIFY COLUMN teacher_phone VARCHAR(40) NULL;
+CREATE INDEX idx_tickets_entry_mode ON tickets(entry_mode, created_at);
+
+
+
+  USE oqhm7raqbkfdrtqz;
+SELECT region_id, region_name
+FROM regions
+ORDER BY region_id;
+
+
+  USE oqhm7raqbkfdrtqz;
+-- 1) confirm user exists
+SELECT user_id, email, is_active, role, region_id, password_hash
+FROM users
+WHERE email = 'enquiry.ashantiregion@gmail.com';
+
+-- 2) confirm allowlist entry exists and active
+SELECT allowlist_id, email, is_active
+FROM login_allowlist
+WHERE email = 'enquiry.ashantiregion@gmail.com';
+
+-- 3) quick check how many of your enquiry accounts exist
+SELECT COUNT(*) AS users_found
+FROM users
+WHERE email LIKE 'enquiry.%@gmail.com';
+
+SELECT COUNT(*) AS allowlist_found
+FROM login_allowlist
+WHERE email LIKE 'enquiry.%@gmail.com' AND is_active = 1;
+
+
+
+
+
+
+USE oqhm7raqbkfdrtqz;
+
+INSERT INTO users (full_name, email, role, region_id, password_hash, is_active)
+VALUES
+('Greater Accra Regional Coordinator', 'enquiry.greateraccraregion@gmail.com', 'Regional Supervisor', 1,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Ashanti Regional Coordinator',       'enquiry.ashantiregion@gmail.com',     'Regional Supervisor', 2,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Western Regional Coordinator',       'enquiry.westernregion@gmail.com',     'Regional Supervisor', 3,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Eastern Regional Coordinator',       'enquiry.easternregion@gmail.com',     'Regional Supervisor', 4,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Central Regional Coordinator',       'enquiry.centralregion@gmail.com',     'Regional Supervisor', 5,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Northern Regional Coordinator',      'enquiry.northernregion@gmail.com',    'Regional Supervisor', 6,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Upper East Regional Coordinator',    'enquiry.ueastregion@gmail.com',       'Regional Supervisor', 7,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Upper West Regional Coordinator',    'enquiry.uwestregion@gmail.com',       'Regional Supervisor', 8,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Volta Regional Coordinator',         'enquiry.voltaregion@gmail.com',       'Regional Supervisor', 9,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Bono Regional Coordinator',          'enquiry.bonoregion@gmail.com',        'Regional Supervisor', 10, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Western North Regional Coordinator', 'enquiry.westernnorthregion@gmail.com','Regional Supervisor', 11, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Ahafo Regional Coordinator',         'enquiry.ahaforegion@gmail.com',       'Regional Supervisor', 12, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Bono East Regional Coordinator',     'enquiry.bonoeastregion@gmail.com',    'Regional Supervisor', 13, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Oti Regional Coordinator',           'enquiry.otiregion@gmail.com',         'Regional Supervisor', 14, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('North East Regional Coordinator',    'enquiry.northeastregion@gmail.com',   'Regional Supervisor', 15, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Savannah Regional Coordinator',      'enquiry.savannahregion@gmail.com',    'Regional Supervisor', 16, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+
+-- National accounts (no region)
+('System Administrator',               'enquiry.admin@gmail.com',             'National Admin', NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('National PRO Office',                'enquiry.nationalprooffice@gmail.com', 'National Resolver', NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1)
+
+ON DUPLICATE KEY UPDATE
+  full_name = VALUES(full_name),
+  role = VALUES(role),
+  region_id = VALUES(region_id),
+  password_hash = VALUES(password_hash),
+  is_active = 1;
+
+
+
+
+SELECT COUNT(*) AS users_found
+FROM users
+WHERE email LIKE 'enquiry.%@gmail.com';
+
+SELECT user_id, email, is_active, role, region_id
+FROM users
+WHERE email = 'enquiry.ashantiregion@gmail.com';
+
+
+
+
+SELECT email, is_active
+FROM login_allowlist
+WHERE email = 'enquiry.ashantiregion@gmail.com';
+
+
+
+SELECT email, password_hash
+FROM users
+WHERE email = 'enquiry.ashantiregion@gmail.com';
+
+
+
+SELECT attempted_at, email, success, reason, user_id
+FROM login_audit
+WHERE email = 'enquiry.ashantiregion@gmail.com'
+ORDER BY attempted_at DESC
+LIMIT 10;
+
+
