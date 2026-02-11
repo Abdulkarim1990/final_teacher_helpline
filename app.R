@@ -24,9 +24,6 @@ library(shinyWidgets)
 library(shinyjs)
 library(pool)
 library(openxlsx)
-library(dplyr)
-
-
 library(bcrypt)
 
 
@@ -236,112 +233,7 @@ con <- function() {
 
 
 
-# Database helper functions (existing ones)
-get_regional_performance <- function(con, months_back = 12) {
-  if (is.null(con)) return(data.frame())
-  
-  q <- "
-    SELECT r.region_name,
-           COUNT(*) as total_cases,
-           SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
-           ROUND(SUM(CASE WHEN t.status IN ('Resolved','Closed') THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as resolution_rate,
-           ROUND(AVG(CASE WHEN t.status IN ('Resolved','Closed')
-                          THEN TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, t.closed_at))
-                     END), 1) as avg_resolution_hours,
-           SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
-           ROUND(SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END)/NULLIF(COUNT(*),0)*100,1) as escalation_rate,
-           SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases
-    FROM tickets t
-    LEFT JOIN regions r ON t.region_id = r.region_id
-    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY r.region_name
-    ORDER BY resolution_rate DESC, total_cases DESC
-  "
-  dbGetQuery(con, q, params = list(months_back))
-}
-
-get_category_trends <- function(con, months_back = 12) {
-  if (is.null(con)) return(data.frame())
-  
-  q <- "
-    SELECT DATE_FORMAT(t.created_at, '%Y-%m') as ym,
-           COALESCE(c.category_name,'Unknown') as category_name,
-           COUNT(*) as cases
-    FROM tickets t
-    LEFT JOIN issue_categories c ON t.category_id = c.category_id
-    WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY ym, category_name
-    ORDER BY ym ASC, cases DESC
-  "
-  dbGetQuery(con, q, params = list(months_back))
-}
-
-get_time_series <- function(con, months_back = 18) {
-  if (is.null(con)) return(data.frame())
-  
-  q <- "
-    SELECT DATE_FORMAT(created_at, '%Y-%m') as ym,
-           COUNT(*) as created,
-           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved,
-           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
-                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
-                     END),1) as avg_resolution_hours
-    FROM tickets
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY ym
-    ORDER BY ym ASC
-  "
-  dbGetQuery(con, q, params = list(months_back))
-}
-
-get_sla_overview <- function(con) {
-  if (is.null(con)) return(list(summary=data.frame(), by_region=data.frame(), overdue=data.frame()))
-  
-  summary_q <- "
-    SELECT
-      SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
-      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
-      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
-      SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND (resolution_due_at IS NULL OR resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
-    FROM tickets
-  "
-  
-  by_region_q <- "
-    SELECT r.region_name,
-      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
-      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
-      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
-      SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND (t.resolution_due_at IS NULL OR t.resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
-    FROM tickets t
-    LEFT JOIN regions r ON t.region_id = r.region_id
-    GROUP BY r.region_name
-    ORDER BY overdue DESC, due_soon DESC, open_cases DESC
-  "
-  
-  overdue_q <- "
-    SELECT ticket_id, case_code, priority, status, created_at, resolution_due_at,
-           TIMESTAMPDIFF(HOUR, resolution_due_at, NOW()) as hours_overdue
-    FROM tickets
-    WHERE status NOT IN ('Resolved','Closed')
-      AND resolution_due_at IS NOT NULL
-      AND resolution_due_at < NOW()
-    ORDER BY hours_overdue DESC
-    LIMIT 200
-  "
-  
-  list(
-    summary  = dbGetQuery(con, summary_q),
-    by_region = dbGetQuery(con, by_region_q),
-    overdue  = dbGetQuery(con, overdue_q)
-  )
-}
-
-
-
-
-
-
-# Database helper functions (existing ones)
+# Database helper functions
 get_regional_performance <- function(con, months_back = 12) {
   if (is.null(con)) return(data.frame())
   
@@ -1189,17 +1081,18 @@ ui <- tagList(
             
             div(
               passwordInput("current_password", "Current Password", placeholder = "Enter current password", width = "100%"),
-              passwordInput("new_password", "New Password", placeholder = "Enter new password (min 8 characters)", width = "100%"),
+              passwordInput("new_password", "New Password", placeholder = "Enter new password (min 12 characters)", width = "100%"),
               passwordInput("confirm_password", "Confirm New Password", placeholder = "Re-enter new password", width = "100%"),
               
               # Password requirements hint
               div(style = "background: #f0f9ff; padding: 12px; border-radius: 8px; margin: 15px 0;",
                   tags$p(style = "margin: 0 0 8px 0; font-weight: 600; color: #1e3a8a; font-size: 13px;", "Password Requirements:"),
                   tags$ul(style = "margin: 0; padding-left: 20px; color: #64748b; font-size: 12px;",
-                          tags$li("At least 8 characters long"),
+                          tags$li("At least 12 characters long"),
                           tags$li("Contains at least one uppercase letter"),
                           tags$li("Contains at least one lowercase letter"),
-                          tags$li("Contains at least one number")
+                          tags$li("Contains at least one number"),
+                          tags$li("Contains at least one special character (!@#$%^&* etc.)")
                   )
               ),
               
@@ -5481,18 +5374,25 @@ server <- function(input, output, session) {
     
     tryCatch({
       base_query <- "SELECT * FROM case_templates WHERE is_active = 1"
-      
+      params <- list()
+
       if (!is.null(input$template_category_filter) && input$template_category_filter != "") {
-        base_query <- paste0(base_query, " AND template_category = '", input$template_category_filter, "'")
+        base_query <- paste0(base_query, " AND template_category = ?")
+        params <- append(params, input$template_category_filter)
       }
-      
+
       if (!is.null(input$template_search) && input$template_search != "") {
         search_term <- paste0("%", input$template_search, "%")
-        base_query <- paste0(base_query, " AND (template_name LIKE '", search_term, "' OR template_body LIKE '", search_term, "')")
+        base_query <- paste0(base_query, " AND (template_name LIKE ? OR template_body LIKE ?)")
+        params <- append(params, list(search_term, search_term))
       }
-      
+
       base_query <- paste0(base_query, " ORDER BY template_category, template_name")
-      dbGetQuery(con(), base_query)
+      if (length(params) > 0) {
+        dbGetQuery(con(), base_query, params = params)
+      } else {
+        dbGetQuery(con(), base_query)
+      }
     }, error = function(e) {
       # Return default templates if table doesn't exist
       data.frame(
