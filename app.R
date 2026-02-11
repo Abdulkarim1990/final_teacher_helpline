@@ -997,11 +997,7 @@ ui <- tagList(
       
       # Top navigation bar
       div(style = "padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;",
-          div(
-            tags$img(src = "https://upload.wikimedia.org/wikipedia/en/thumb/8/89/Coat_of_arms_of_Ghana.svg/100px-Coat_of_arms_of_Ghana.svg.png",
-                     height = "50px", style = "margin-right: 15px; vertical-align: middle;"),
-            tags$span("GES Teacher Support Helpline", style = "color: white; font-size: 22px; font-weight: bold; vertical-align: middle;")
-          ),
+         
           div(
             actionButton("landing_analytics_btn", "View Analytics",
                          class = "btn", style = "background: transparent; border: 2px solid white; color: white; margin-right: 10px; padding: 8px 24px; border-radius: 25px; font-weight: 600;"),
@@ -2521,6 +2517,14 @@ ui <- tagList(
             )
           )
         ) # end dashboardPage
+        ,
+        
+        
+        tags$script(HTML("
+  Shiny.addCustomMessageHandler('keepalive', function(x) {
+    // do nothing, just keep the connection alive
+  });
+"))
     ) # end div#main_app
   ) # end hidden
 ) # end tagList (ui)
@@ -2531,6 +2535,14 @@ server <- function(input, output, session) {
   # ========================================
   # Authentication & Page State Management
   # ========================================
+  
+  
+  observe({
+    invalidateLater(25000, session)  # every 25 seconds
+    session$sendCustomMessage("keepalive", list(t = as.character(Sys.time())))
+  })
+  
+  
   rv <- reactiveValues(
     logged_in = FALSE,
     user = NULL,
