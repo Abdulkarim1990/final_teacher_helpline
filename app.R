@@ -2873,8 +2873,8 @@ server <- function(input, output, session) {
       return(list(valid = FALSE, msg = "Password must contain at least one number."))
     }
     # SECURITY: Added special character requirement
-    if (!grepl("[!@#$%^&*(),.?\":{}|<>\\-_=+\\[\\]\\\\;'/~`]", password)) {
-      return(list(valid = FALSE, msg = "Password must contain at least one special character (!@#$%^&*(),.?\":{}|<>-_=+[];'/~`)."))
+    if (!grepl("[^A-Za-z0-9]", password)) {
+      return(list(valid = FALSE, msg = "Password must contain at least one special character (!@#$%^&* etc.)."))
     }
     # SECURITY: Check for common weak passwords
     common_passwords <- c("password", "123456", "qwerty", "admin", "letmein", "welcome")
