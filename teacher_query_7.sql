@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS channels (
 -- Enhanced tickets table with comprehensive tracking
 CREATE TABLE IF NOT EXISTS tickets (
   ticket_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  case_code VARCHAR(30) UNIQUE NOT NULL,
+  case_code VARCHAR(30) UNIQUE DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_by_user_id INT NULL,
   region_id INT NOT NULL,
@@ -445,7 +445,7 @@ INSERT IGNORE INTO users (full_name, email, role, region_id, password_hash) VALU
 -- Triggers for Auto-Updates
 -- =====================================================
 
--- Auto-generate case codes and set SLA dates
+-- Set SLA dates on ticket creation
 DELIMITER //
 CREATE TRIGGER set_ticket_defaults 
 BEFORE INSERT ON tickets
@@ -453,11 +453,6 @@ FOR EACH ROW
 BEGIN
     DECLARE sla_first_response INT;
     DECLARE sla_resolution INT;
-    
-    -- Generate case code if not provided
-    IF NEW.case_code IS NULL OR NEW.case_code = '' THEN
-        SET NEW.case_code = CONCAT('GES-', YEAR(NOW()), '-', LPAD((SELECT COALESCE(MAX(ticket_id), 0) + 1 FROM tickets), 6, '0'));
-    END IF;
     
     -- Get SLA hours for category
     SELECT first_response_sla_hours, resolution_sla_hours 
