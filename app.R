@@ -218,7 +218,7 @@ onStop(function() {
 
 
 # Returns the database connection pool (or NULL if unavailable)
-get_pool <- function() {
+db_pool <- function() {
   if (is.null(pool)) {
     return(NULL)
   }
@@ -3125,26 +3125,26 @@ server <- function(input, output, session) {
   # Reactive data (existing)
   # ========================================
   categories <- reactive({
-    get_categories(get_pool())
+    get_categories(db_pool())
   })
   
   regions <- reactive({
-    get_regions(get_pool())
+    get_regions(db_pool())
   })
   
   channels <- reactive({
-    get_channels(get_pool())
+    get_channels(db_pool())
   })
   
   subcategories <- reactive({
     req(input$category_id)
-    get_subcategories(get_pool(), input$category_id)
+    get_subcategories(db_pool(), input$category_id)
   })
   
   # Quick entry subcategories (separate reactive for quick form's category select)
   quick_subcategories <- reactive({
     req(input$quick_category_id)
-    get_subcategories(get_pool(), input$quick_category_id)
+    get_subcategories(db_pool(), input$quick_category_id)
   })
   
   # NEW: Selected case reactive for details view
@@ -3298,7 +3298,7 @@ server <- function(input, output, session) {
     auto_refresh_timer()
     dashboard_stats_invalidator()
     forced_region <- user_region_id()
-    get_dashboard_stats(get_pool(), region_id = forced_region)
+    get_dashboard_stats(db_pool(), region_id = forced_region)
   })
   
   output$total_cases <- renderInfoBox({
@@ -3384,7 +3384,7 @@ server <- function(input, output, session) {
   
   output$overdue_cases_kpi <- renderInfoBox({
     sla <- tryCatch({
-      get_sla_overview(get_pool())
+      get_sla_overview(db_pool())
     }, error = function(e) {
       list(summary = data.frame(overdue = 0))
     })
@@ -3471,7 +3471,7 @@ server <- function(input, output, session) {
     }
     
     success <- insert_ticket(
-      con = get_pool(),
+      con = db_pool(),
       region_id = input$region_select %or% 1,
       channel_id = input$channel %or% 1,
       teacher_name = input$teacher_name,
@@ -3586,7 +3586,7 @@ server <- function(input, output, session) {
     }
     
     success <- insert_ticket(
-      con = get_pool(),
+      con = db_pool(),
       region_id = input$quick_region %or% 1,
       channel_id = input$quick_channel %or% 1,
       teacher_name = input$quick_teacher_name,
@@ -3624,11 +3624,11 @@ server <- function(input, output, session) {
     tryCatch({
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
-        count <- dbGetQuery(get_pool(),
+        count <- dbGetQuery(db_pool(),
                             "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE() AND region_id = ?",
                             params = list(forced_region))$cnt
       } else {
-        count <- dbGetQuery(get_pool(),
+        count <- dbGetQuery(db_pool(),
                             "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE()")$cnt
       }
       if (count > 0) {
@@ -3646,7 +3646,7 @@ server <- function(input, output, session) {
     tryCatch({
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
-        summary_data <- dbGetQuery(get_pool(),
+        summary_data <- dbGetQuery(db_pool(),
                                    "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
@@ -3655,7 +3655,7 @@ server <- function(input, output, session) {
            ORDER BY cnt DESC",
                                    params = list(forced_region))
       } else {
-        summary_data <- dbGetQuery(get_pool(),
+        summary_data <- dbGetQuery(db_pool(),
                                    "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
@@ -3711,7 +3711,7 @@ server <- function(input, output, session) {
   # Data tables with role-based region access control
   recent_cases_data <- reactive({
     forced_region <- user_region_id()
-    fetch_tickets(get_pool(), region_id = forced_region, limit = 10)
+    fetch_tickets(db_pool(), region_id = forced_region, limit = 10)
   })
   
   my_cases_data <- reactive({
@@ -3724,7 +3724,7 @@ server <- function(input, output, session) {
     # Enforce region restriction: regional users always filtered to their region
     forced_region <- user_region_id()
     region_filter <- if (!is.null(forced_region)) forced_region else input$my_region_filter
-    fetch_tickets(get_pool(), region_id = region_filter, status_filter = status_val)
+    fetch_tickets(db_pool(), region_id = region_filter, status_filter = status_val)
   })
   
   all_cases_data <- reactive({
@@ -3751,7 +3751,7 @@ server <- function(input, output, session) {
     forced_region <- user_region_id()
     region_filter <- if (!is.null(forced_region)) forced_region else input$all_region_filter
     
-    fetch_tickets(get_pool(), region_id = region_filter, status_filter = status_val,
+    fetch_tickets(db_pool(), region_id = region_filter, status_filter = status_val,
                   category_id = cat_val, search_text = search_val,
                   date_from = date_from_val, date_to = date_to_val)
   })
@@ -3903,7 +3903,7 @@ server <- function(input, output, session) {
     }
     
     tryCatch({
-      result <- dbGetQuery(get_pool(), "SELECT ticket_id FROM tickets WHERE case_code LIKE ? LIMIT 1",
+      result <- dbGetQuery(db_pool(), "SELECT ticket_id FROM tickets WHERE case_code LIKE ? LIMIT 1",
                            params = list(paste0("%", search_code, "%")))
       if (nrow(result) > 0) {
         selected_case_id(result$ticket_id[1])
@@ -3927,7 +3927,7 @@ server <- function(input, output, session) {
       if (!is.null(forced_region)) {
         # Verify case belongs to user's region
         case_region <- tryCatch({
-          dbGetQuery(get_pool(), "SELECT region_id FROM tickets WHERE ticket_id = ?",
+          dbGetQuery(db_pool(), "SELECT region_id FROM tickets WHERE ticket_id = ?",
                      params = list(input$view_case_id))
         }, error = function(e) data.frame())
         
@@ -3946,9 +3946,9 @@ server <- function(input, output, session) {
   output$case_details_content <- renderUI({
     req(selected_case_id())
     
-    case_data <- get_case_details(get_pool(), selected_case_id())
-    actions_data <- get_case_actions(get_pool(), selected_case_id())
-    followups_data <- get_case_followups(get_pool(), selected_case_id())
+    case_data <- get_case_details(db_pool(), selected_case_id())
+    actions_data <- get_case_actions(db_pool(), selected_case_id())
+    followups_data <- get_case_followups(db_pool(), selected_case_id())
     
     if (is.null(case_data)) {
       return(div(h3("Case not found"), class = "text-center"))
@@ -4251,7 +4251,7 @@ server <- function(input, output, session) {
   observeEvent(input$start_progress_btn, {
     if (!is.null(selected_case_id())) {
       uid <- current_user_id()
-      success <- update_case_status(get_pool(), selected_case_id(), "In Progress", "Case work started", uid)
+      success <- update_case_status(db_pool(), selected_case_id(), "In Progress", "Case work started", uid)
       if (success) {
         tryCatch({ log_activity(pool, uid, "Start Progress", paste("Case ID:", selected_case_id())) }, error = function(e) {})
         runjs("$('#caseDetailsModal').modal('hide');")
@@ -4265,7 +4265,7 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_status_update, {
     if (!is.null(input$new_status) && !is.null(selected_case_id())) {
       uid <- current_user_id()
-      success <- update_case_status(get_pool(), selected_case_id(), input$new_status,
+      success <- update_case_status(db_pool(), selected_case_id(), input$new_status,
                                     if(!is.null(input$status_notes) && input$status_notes != "") input$status_notes else NULL,
                                     uid)
       if (success) {
@@ -4293,7 +4293,7 @@ server <- function(input, output, session) {
     if (!is.null(input$note_text) && nchar(input$note_text) >= 5) {
       if (!is.null(selected_case_id())) {
         uid <- current_user_id()
-        success <- add_case_note(get_pool(), selected_case_id(), input$note_text, uid)
+        success <- add_case_note(db_pool(), selected_case_id(), input$note_text, uid)
         if (success) {
           tryCatch({ log_activity(pool, uid, "Add Note", paste("Case ID:", selected_case_id())) }, error = function(e) {})
           updateTextAreaInput(session, "note_text", value = "")
@@ -4336,17 +4336,17 @@ server <- function(input, output, session) {
     # Update case status and add escalation reason
     success <- tryCatch({
       # Update ticket status
-      dbExecute(get_pool(),
+      dbExecute(db_pool(),
                 "UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), escalation_reason = ? WHERE ticket_id = ?",
                 params = list(reason, selected_case_id()))
       
       # Log the action
-      add_case_note(get_pool(), selected_case_id(), paste("ESCALATED (Level", level, "):", reason), uid)
+      add_case_note(db_pool(), selected_case_id(), paste("ESCALATED (Level", level, "):", reason), uid)
       
       # Insert into escalations table
-      national_pro_user <- dbGetQuery(get_pool(), "SELECT user_id FROM users WHERE email = 'enquiry.nationalprooffice@gmail.com' LIMIT 1")
+      national_pro_user <- dbGetQuery(db_pool(), "SELECT user_id FROM users WHERE email = 'enquiry.nationalprooffice@gmail.com' LIMIT 1")
       if (nrow(national_pro_user) > 0) {
-        dbExecute(get_pool(),
+        dbExecute(db_pool(),
                   "INSERT INTO escalations (ticket_id, escalated_by_user_id, escalated_to_user_id, escalation_reason, escalation_method) VALUES (?, ?, ?, ?, 'System')",
                   params = list(selected_case_id(), uid, national_pro_user$user_id[1], reason))
       }
@@ -4364,7 +4364,7 @@ server <- function(input, output, session) {
       runjs("$('#escalationReasonModal').modal('hide');")
       
       # Store escalated case info for popup
-      rv$last_escalated_case <- get_case_details(get_pool(), selected_case_id())
+      rv$last_escalated_case <- get_case_details(db_pool(), selected_case_id())
       
       # Show escalation popup
       shinyjs::show("escalationPopupOverlay")
@@ -4389,12 +4389,12 @@ server <- function(input, output, session) {
     if (!is.null(selected_case_id())) {
       uid <- current_user_id()
       # Update status to Resolved
-      success <- update_case_status(get_pool(), selected_case_id(), "Resolved",
+      success <- update_case_status(db_pool(), selected_case_id(), "Resolved",
                                     input$resolution_notes, uid)
       if (success) {
         # Save satisfaction rating
         tryCatch({
-          dbExecute(get_pool(),
+          dbExecute(db_pool(),
                     "UPDATE tickets SET satisfaction_rating = ?, satisfaction_feedback = ? WHERE ticket_id = ?",
                     params = list(
                       as.integer(input$satisfaction_rating),
@@ -4435,12 +4435,12 @@ server <- function(input, output, session) {
     }
     if (!is.null(selected_case_id())) {
       uid <- current_user_id()
-      success <- update_case_status(get_pool(), selected_case_id(), "In Progress",
+      success <- update_case_status(db_pool(), selected_case_id(), "In Progress",
                                     paste("Case reopened:", input$reopen_reason), uid)
       if (success) {
         # Clear resolved/closed timestamps
         tryCatch({
-          dbExecute(get_pool(),
+          dbExecute(db_pool(),
                     "UPDATE tickets SET resolved_at = NULL, closed_at = NULL, satisfaction_rating = NULL WHERE ticket_id = ?",
                     params = list(selected_case_id()))
         }, error = function(e) {
@@ -4510,7 +4510,7 @@ server <- function(input, output, session) {
   
   # Analytics outputs (existing)
   analytics_stats <- reactive({
-    get_dashboard_stats(get_pool())
+    get_dashboard_stats(db_pool())
   })
   
   output$analytics_total <- renderInfoBox({
@@ -4548,23 +4548,23 @@ server <- function(input, output, session) {
   # Advanced Analytics reactives
   # ----------------------------
   regional_perf <- reactive({
-    req(get_pool())
-    get_regional_performance(get_pool(), months_back = 12)
+    req(db_pool())
+    get_regional_performance(db_pool(), months_back = 12)
   })
   
   category_trends <- reactive({
-    req(get_pool())
-    get_category_trends(get_pool(), months_back = 12)
+    req(db_pool())
+    get_category_trends(db_pool(), months_back = 12)
   })
   
   monthly_series <- reactive({
-    req(get_pool())
-    get_time_series(get_pool(), months_back = 18)
+    req(db_pool())
+    get_time_series(db_pool(), months_back = 18)
   })
   
   sla_data <- reactive({
-    req(get_pool())
-    get_sla_overview(get_pool())
+    req(db_pool())
+    get_sla_overview(db_pool())
   })
   
   # ----------------------------
@@ -4934,9 +4934,9 @@ server <- function(input, output, session) {
       base_query <- paste0(base_query, " ORDER BY t.escalated_at DESC")
       
       if (length(params) > 0) {
-        dbGetQuery(get_pool(), base_query, params = params)
+        dbGetQuery(db_pool(), base_query, params = params)
       } else {
-        dbGetQuery(get_pool(), base_query)
+        dbGetQuery(db_pool(), base_query)
       }
     }, error = function(e) {
       data.frame()
@@ -4993,14 +4993,14 @@ server <- function(input, output, session) {
   
   # Update region filter choices for escalated cases
   observe({
-    regions <- get_regions(get_pool())
+    regions <- get_regions(db_pool())
     updateSelectInput(session, "esc_region_filter",
                       choices = c("All Regions" = "", regions$region_name))
   })
   
   # Update category filter choices for escalated cases
   observe({
-    categories <- get_categories(get_pool())
+    categories <- get_categories(db_pool())
     updateSelectInput(session, "esc_category_filter",
                       choices = c("All Categories" = "", categories$category_name))
   })
@@ -5074,7 +5074,7 @@ server <- function(input, output, session) {
           LEFT JOIN issue_categories c ON t.category_id = c.category_id
           WHERE f.status = 'Pending' AND t.region_id = ?
           ORDER BY f.follow_up_date ASC"
-        dbGetQuery(get_pool(), base_query, params = list(forced_region))
+        dbGetQuery(db_pool(), base_query, params = list(forced_region))
       } else {
         # Query without region filter (for national users)
         base_query <- "
@@ -5093,7 +5093,7 @@ server <- function(input, output, session) {
           LEFT JOIN issue_categories c ON t.category_id = c.category_id
           WHERE f.status = 'Pending'
           ORDER BY f.follow_up_date ASC"
-        dbGetQuery(get_pool(), base_query)
+        dbGetQuery(db_pool(), base_query)
       }
     }, error = function(e) {
       data.frame()
@@ -5148,7 +5148,7 @@ server <- function(input, output, session) {
   
   # Follow-up region filter UI - region-restricted based on user role
   output$followup_region_filter_ui <- renderUI({
-    regions_df <- get_regions(get_pool())
+    regions_df <- get_regions(db_pool())
     forced_region <- user_region_id()
     
     if (!is.null(forced_region)) {
@@ -5277,7 +5277,7 @@ server <- function(input, output, session) {
     
     tryCatch({
       # Update follow-up status to Completed
-      dbExecute(get_pool(), "
+      dbExecute(db_pool(), "
         UPDATE follow_ups
         SET status = 'Completed',
             completed_at = NOW(),
@@ -5286,12 +5286,12 @@ server <- function(input, output, session) {
       ", params = list(current_user_id(), input$complete_followup_id))
       
       # Log the action in ticket_actions
-      followup_info <- dbGetQuery(get_pool(),
+      followup_info <- dbGetQuery(db_pool(),
                                   "SELECT ticket_id FROM follow_ups WHERE follow_up_id = ?",
                                   params = list(input$complete_followup_id))
       
       if (nrow(followup_info) > 0) {
-        dbExecute(get_pool(), "
+        dbExecute(db_pool(), "
           INSERT INTO ticket_actions (ticket_id, action_type, action_by_user_id, action_text)
           VALUES (?, 'note', ?, 'Follow-up completed')
         ", params = list(followup_info$ticket_id[1], current_user_id()))
@@ -5317,7 +5317,7 @@ server <- function(input, output, session) {
     case <- tryCatch({
       if (!is.null(forced_region)) {
         # Regional users can only schedule follow-ups for cases in their region
-        dbGetQuery(get_pool(),
+        dbGetQuery(db_pool(),
                    "SELECT ticket_id, case_code FROM tickets
            WHERE (case_code LIKE ? OR teacher_name LIKE ?) AND region_id = ? LIMIT 1",
                    params = list(paste0("%", input$followup_case_search, "%"),
@@ -5325,7 +5325,7 @@ server <- function(input, output, session) {
                                  forced_region))
       } else {
         # National users can schedule follow-ups for any case
-        dbGetQuery(get_pool(),
+        dbGetQuery(db_pool(),
                    "SELECT ticket_id, case_code FROM tickets
            WHERE case_code LIKE ? OR teacher_name LIKE ? LIMIT 1",
                    params = list(paste0("%", input$followup_case_search, "%"),
@@ -5344,13 +5344,13 @@ server <- function(input, output, session) {
     
     # Insert follow-up
     tryCatch({
-      dbExecute(get_pool(), "
+      dbExecute(db_pool(), "
         INSERT INTO follow_ups (ticket_id, follow_up_date, follow_up_notes, created_by_user_id)
         VALUES (?, ?, ?, ?)
       ", params = list(case$ticket_id[1], input$followup_date, input$followup_notes, current_user_id()))
       
       # Update ticket's next follow-up date
-      dbExecute(get_pool(), "UPDATE tickets SET next_follow_up_date = ? WHERE ticket_id = ?",
+      dbExecute(db_pool(), "UPDATE tickets SET next_follow_up_date = ? WHERE ticket_id = ?",
                 params = list(input$followup_date, case$ticket_id[1]))
       
       showNotification(paste("Follow-up scheduled for", case$case_code[1], "on", input$followup_date), type = "message")
@@ -5387,9 +5387,9 @@ server <- function(input, output, session) {
 
       base_query <- paste0(base_query, " ORDER BY template_category, template_name")
       if (length(params) > 0) {
-        dbGetQuery(get_pool(), base_query, params = params)
+        dbGetQuery(db_pool(), base_query, params = params)
       } else {
-        dbGetQuery(get_pool(), base_query)
+        dbGetQuery(db_pool(), base_query)
       }
     }, error = function(e) {
       # Return default templates if table doesn't exist
@@ -5515,7 +5515,7 @@ server <- function(input, output, session) {
     req(input$new_template_body)
     
     tryCatch({
-      dbExecute(get_pool(), "
+      dbExecute(db_pool(), "
         INSERT INTO case_templates (template_name, template_category, template_subject, template_body)
         VALUES (?, ?, ?, ?)
       ", params = list(input$new_template_name, input$new_template_category,
@@ -5588,7 +5588,7 @@ server <- function(input, output, session) {
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
-        update_case_status(get_pool(), tid, input$bulk_new_status, input$bulk_status_notes, current_user_id())
+        update_case_status(db_pool(), tid, input$bulk_new_status, input$bulk_status_notes, current_user_id())
         success_count <- success_count + 1
       }, error = function(e) {})
     }
@@ -5616,7 +5616,7 @@ server <- function(input, output, session) {
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
-        dbExecute(get_pool(), "UPDATE tickets SET priority = ? WHERE ticket_id = ?",
+        dbExecute(db_pool(), "UPDATE tickets SET priority = ? WHERE ticket_id = ?",
                   params = list(input$bulk_new_priority, tid))
         success_count <- success_count + 1
       }, error = function(e) {})
@@ -5638,9 +5638,9 @@ server <- function(input, output, session) {
     success_count <- 0
     for (tid in ticket_ids) {
       tryCatch({
-        dbExecute(get_pool(), "UPDATE tickets SET status = 'Escalated', escalated_at = NOW() WHERE ticket_id = ?",
+        dbExecute(db_pool(), "UPDATE tickets SET status = 'Escalated', escalated_at = NOW() WHERE ticket_id = ?",
                   params = list(tid))
-        add_case_note(get_pool(), tid, "Bulk escalated for national review", current_user_id())
+        add_case_note(db_pool(), tid, "Bulk escalated for national review", current_user_id())
         success_count <- success_count + 1
       }, error = function(e) {})
     }
