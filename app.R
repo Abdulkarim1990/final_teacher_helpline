@@ -689,7 +689,10 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
     # Set resolved_at for quick entries that are immediately resolved
     resolved_at_val <- if (entry_mode == "quick" && status == "Resolved") "NOW()" else "NULL"
 
-    # Insert ticket without case_code (will be set post-insert using ticket_id)
+    # Use a single checked-out connection so LAST_INSERT_ID() works correctly
+    db_conn <- poolCheckout(con)
+    on.exit(poolReturn(db_conn))
+
     query <- paste0("
       INSERT INTO tickets (
         region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
@@ -698,7 +701,7 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ", resolved_at_val, ", NOW())
     ")
 
-    rows_affected <- dbExecute(con, query, params = list(
+    rows_affected <- dbExecute(db_conn, query, params = list(
       region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
       school_name, district, category_id, subcategory_id, priority, status, summary, description,
       entry_mode, quick_outcome
@@ -706,24 +709,22 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
 
     if (rows_affected > 0) {
       # Generate case_code from ticket_id (guaranteed unique by AUTO_INCREMENT)
-      case_code <- tryCatch({
-        ticket_id <- dbGetQuery(con, "SELECT LAST_INSERT_ID() AS id")$id[1]
-        generated_code <- sprintf("GES-%d-%06d", as.integer(format(Sys.Date(), "%Y")), ticket_id)
-        dbExecute(con, "UPDATE tickets SET case_code = ? WHERE ticket_id = ?", params = list(generated_code, ticket_id))
-        generated_code
-      }, error = function(e) "Unknown")
+      ticket_id <- dbGetQuery(db_conn, "SELECT LAST_INSERT_ID() AS id")$id[1]
+      generated_code <- sprintf("GES-%d-%06d", as.integer(format(Sys.Date(), "%Y")), ticket_id)
+      dbExecute(db_conn, "UPDATE tickets SET case_code = ? WHERE ticket_id = ?",
+                params = list(generated_code, ticket_id))
 
       if (entry_mode == "quick") {
-        showNotification(paste("Quick entry logged!", case_code), type = "message", duration = 3)
+        showNotification(paste("Quick entry logged!", generated_code), type = "message", duration = 3)
       } else {
-        showNotification(paste("Case", case_code, "created successfully!"), type = "message")
+        showNotification(paste("Case", generated_code, "created successfully!"), type = "message")
       }
       return(TRUE)
     } else {
       showNotification("Failed to create case - no rows affected", type = "error")
       return(FALSE)
     }
-    
+
   }, error = function(e) {
     showNotification(paste("Error saving ticket:", e$message), type = "error")
     return(FALSE)
@@ -3501,6 +3502,7 @@ server <- function(input, output, session) {
     if (success) {
       uid <- current_user_id()
       tryCatch({ log_activity(pool, uid, "Create Case", paste("Teacher:", input$teacher_name)) }, error = function(e) {})
+      dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
       updateTextInput(session, "teacher_name", value = "")
       updateTextInput(session, "teacher_phone", value = "")
       updateTextInput(session, "teacher_staff_id", value = "")
@@ -3618,6 +3620,7 @@ server <- function(input, output, session) {
     if (success) {
       uid <- current_user_id()
       tryCatch({ log_activity(pool, uid, "Quick Entry", paste("Category:", cat_name, "| Outcome:", outcome)) }, error = function(e) {})
+      dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
       # Reset form for next quick entry (keep channel and category for batch logging)
       updateSelectInput(session, "quick_outcome", selected = "Resolved")
       updateTextInput(session, "quick_teacher_name", value = "")
@@ -3720,6 +3723,7 @@ server <- function(input, output, session) {
   
   # Data tables with role-based region access control
   recent_cases_data <- reactive({
+    dashboard_stats_invalidator()
     forced_region <- user_region_id()
     fetch_tickets(con(), region_id = forced_region, limit = 10)
   })
