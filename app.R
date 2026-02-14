@@ -2644,7 +2644,7 @@ server <- function(input, output, session) {
   # --- Login handler ---
   get_user_by_email <- function(conn, email) {
     DBI::dbGetQuery(conn, "
-      SELECT user_id, full_name, email, role, region_id, is_active, password_hash
+      SELECT user_id, full_name, email, role, region_id, is_active, password_hash, last_login
       FROM users
       WHERE LOWER(email) = LOWER(?)
       LIMIT 1
