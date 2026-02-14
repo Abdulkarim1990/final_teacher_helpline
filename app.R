@@ -709,7 +709,7 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
 
     if (rows_affected > 0) {
       # Generate case_code from ticket_id (guaranteed unique by AUTO_INCREMENT)
-      ticket_id <- dbGetQuery(db_conn, "SELECT LAST_INSERT_ID() AS id")$id[1]
+      ticket_id <- as.integer(dbGetQuery(db_conn, "SELECT LAST_INSERT_ID() AS id")$id[1])
       generated_code <- sprintf("GES-%d-%06d", as.integer(format(Sys.Date(), "%Y")), ticket_id)
       dbExecute(db_conn, "UPDATE tickets SET case_code = ? WHERE ticket_id = ?",
                 params = list(generated_code, ticket_id))
