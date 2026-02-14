@@ -918,19 +918,22 @@ ui <- tagList(
           )
       ),
 
-      # Hero section - professional colored banner
-      div(style = "background: #1e3a8a; padding: 56px 40px 48px 40px;",
-          div(style = "max-width: 760px; margin: 0 auto; text-align: center;",
-              tags$p("GHANA EDUCATION SERVICE", style = "color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px 0;"),
-              tags$h1("Teacher Support Helpline", style = "color: #ffffff; font-size: 32px; font-weight: 700; margin: 0 0 16px 0; line-height: 1.3;"),
+      # Hero section - classroom image background with overlay
+      div(style = "position: relative; background: url('classroom_hero.jpg') center center / cover no-repeat, #1e3a8a; min-height: 340px; display: flex; align-items: center; justify-content: center;",
+          # Dark overlay for text readability
+          div(style = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(30, 58, 138, 0.7);"),
+          # Content on top of overlay
+          div(style = "position: relative; z-index: 1; max-width: 760px; margin: 0 auto; text-align: center; padding: 64px 40px 56px 40px;",
+              tags$p("GHANA EDUCATION SERVICE", style = "color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px 0;"),
+              tags$h1("Teacher Support Helpline", style = "color: #ffffff; font-size: 36px; font-weight: 700; margin: 0 0 16px 0; line-height: 1.3; text-shadow: 0 2px 4px rgba(0,0,0,0.2);"),
               tags$p("A centralized case management system serving teachers across all 16 regions of Ghana. Log queries, track resolutions, and monitor performance.",
-                     style = "color: rgba(255,255,255,0.75); font-size: 16px; line-height: 1.6; max-width: 580px; margin: 0 auto 28px auto;"),
+                     style = "color: rgba(255,255,255,0.9); font-size: 16px; line-height: 1.6; max-width: 580px; margin: 0 auto 28px auto;"),
 
               div(style = "display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;",
                   actionButton("hero_login_btn", "Staff Login",
-                               class = "btn", style = "background: #ffffff; color: #1e3a8a; border: none; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600;"),
+                               class = "btn", style = "background: #ffffff; color: #1e3a8a; border: none; padding: 12px 32px; border-radius: 6px; font-size: 15px; font-weight: 600;"),
                   actionButton("hero_analytics_btn", "View Public Analytics",
-                               class = "btn", style = "background: transparent; border: 1px solid rgba(255,255,255,0.4); color: #ffffff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 500;")
+                               class = "btn", style = "background: transparent; border: 1.5px solid rgba(255,255,255,0.6); color: #ffffff; padding: 12px 32px; border-radius: 6px; font-size: 15px; font-weight: 500;")
               )
           )
       ),
