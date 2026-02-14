@@ -1029,27 +1029,30 @@ ui <- tagList(
           )
       ),
 
-      # Contact Section
-      div(style = "padding: 48px 40px; background: #ffffff;",
-          div(style = "max-width: 800px; margin: 0 auto; text-align: center;",
-              tags$h2("Contact Your Regional Helpline", style = "color: #111827; font-size: 20px; font-weight: 600; margin: 0 0 10px 0;"),
+      # Contact Section - classroom image background with overlay
+      div(style = "position: relative; background: url('classroom_hero_2.jpg') center center / cover no-repeat, #1e3a8a; min-height: 260px; display: flex; align-items: center; justify-content: center;",
+          # Dark overlay for text readability
+          div(style = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(30, 58, 138, 0.75);"),
+          # Content on top of overlay
+          div(style = "position: relative; z-index: 1; max-width: 800px; margin: 0 auto; text-align: center; padding: 56px 40px;",
+              tags$h2("Contact Your Regional Helpline", style = "color: #ffffff; font-size: 22px; font-weight: 600; margin: 0 0 10px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.2);"),
               tags$p("Each region has a dedicated support coordinator. Contact your regional office for assistance.",
-                     style = "color: #6b7280; font-size: 15px; margin: 0 0 28px 0;"),
+                     style = "color: rgba(255,255,255,0.85); font-size: 15px; margin: 0 0 28px 0;"),
               div(style = "display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;",
                   div(style = "text-align: center;",
-                      icon("envelope", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
-                      tags$p("Email", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
-                      tags$p("enquiry.[region]@ges.gov.gh", style = "color: #6b7280; font-size: 13px; margin: 0;")
+                      icon("envelope", style = "font-size: 20px; color: #93c5fd; margin-bottom: 8px;"),
+                      tags$p("Email", style = "color: #ffffff; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("enquiry.[region]@ges.gov.gh", style = "color: rgba(255,255,255,0.75); font-size: 13px; margin: 0;")
                   ),
                   div(style = "text-align: center;",
-                      icon("clock", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
-                      tags$p("Hours", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
-                      tags$p("Monday \u2013 Friday, 8 am \u2013 5 pm", style = "color: #6b7280; font-size: 13px; margin: 0;")
+                      icon("clock", style = "font-size: 20px; color: #93c5fd; margin-bottom: 8px;"),
+                      tags$p("Hours", style = "color: #ffffff; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("Monday \u2013 Friday, 8 am \u2013 5 pm", style = "color: rgba(255,255,255,0.75); font-size: 13px; margin: 0;")
                   ),
                   div(style = "text-align: center;",
-                      icon("map-marker-alt", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
-                      tags$p("Coverage", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
-                      tags$p("All 16 Regions of Ghana", style = "color: #6b7280; font-size: 13px; margin: 0;")
+                      icon("map-marker-alt", style = "font-size: 20px; color: #93c5fd; margin-bottom: 8px;"),
+                      tags$p("Coverage", style = "color: #ffffff; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("All 16 Regions of Ghana", style = "color: rgba(255,255,255,0.75); font-size: 13px; margin: 0;")
                   )
               )
           )
