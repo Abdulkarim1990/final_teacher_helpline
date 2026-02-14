@@ -894,143 +894,168 @@ ui <- tagList(
   # LANDING PAGE OVERLAY
   # ========================================
   div(id = "landing_overlay",
-      style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #2c5aa0 70%, #1e40af 100%); overflow-y: auto;",
-      
-      # Top navigation bar
-      div(style = "padding: 20px 40px; display: flex; justify-content: space-between; align-items: center;",
-          
+      style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: #ffffff; overflow-y: auto;",
+
+      # Top navigation bar - clean header with border
+      div(style = "padding: 12px 40px; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-bottom: 1px solid #e5e7eb;",
+
+          # Logo / Branding
+          div(style = "display: flex; align-items: center; gap: 10px;",
+              div(style = "width: 34px; height: 34px; background: #1e3a8a; border-radius: 6px; display: flex; align-items: center; justify-content: center;",
+                  icon("graduation-cap", style = "color: white; font-size: 16px;")
+              ),
+              div(
+                tags$span("GES", style = "font-size: 15px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.5px;"),
+                tags$span(" Teacher Helpline", style = "font-size: 15px; font-weight: 400; color: #4b5563;")
+              )
+          ),
+
           div(
             actionButton("landing_analytics_btn", "View Analytics",
-                         class = "btn", style = "background: transparent; border: 2px solid white; color: white; margin-right: 10px; padding: 8px 24px; border-radius: 25px; font-weight: 600;"),
+                         class = "btn", style = "background: #ffffff; border: 1px solid #d1d5db; color: #374151; margin-right: 8px; padding: 8px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;"),
             actionButton("landing_login_btn", "Staff Login",
-                         class = "btn", style = "background: white; color: #1e3a8a; border: 2px solid white; padding: 8px 24px; border-radius: 25px; font-weight: 600;")
+                         class = "btn", style = "background: #1e3a8a; color: #ffffff; border: 1px solid #1e3a8a; padding: 8px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;")
           )
       ),
-      
-      # Hero section
-      div(style = "text-align: center; padding: 80px 40px 60px 40px; max-width: 900px; margin: 0 auto;",
-          tags$h1("Ghana Education Service", style = "color: white; font-size: 48px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px;"),
-          tags$h2("Teacher Support Helpline", style = "color: #93c5fd; font-size: 28px; font-weight: 400; margin-bottom: 30px;"),
-          tags$p("A centralized query tracking and case management system serving teachers across all 16 regions of Ghana. Log cases, track resolutions, and monitor performance in real-time.",
-                 style = "color: #cbd5e1; font-size: 18px; line-height: 1.7; max-width: 700px; margin: 0 auto 40px auto;"),
-          
-          div(style = "display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;",
-              actionButton("hero_login_btn", "Staff Login",
-                           class = "btn btn-lg", style = "background: #f59e0b; color: #0f172a; border: none; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 700; box-shadow: 0 4px 15px rgba(245,158,11,0.4);"),
-              actionButton("hero_analytics_btn", "View Public Analytics",
-                           class = "btn btn-lg", style = "background: transparent; border: 2px solid #93c5fd; color: #93c5fd; padding: 14px 40px; border-radius: 30px; font-size: 18px; font-weight: 600;")
-          )
-      ),
-      
-      # Live Statistics Section
-      div(style = "background: rgba(0,0,0,0.2); padding: 40px; margin: 0 40px 40px 40px; border-radius: 16px; max-width: 1120px; margin-left: auto; margin-right: auto;",
-          tags$h3("Helpline Statistics", style = "color: white; text-align: center; margin-bottom: 30px; font-size: 24px; font-weight: 600;"),
-          div(style = "display: flex; justify-content: space-around; flex-wrap: wrap; gap: 20px;",
-              div(style = "text-align: center; min-width: 150px;",
-                  tags$div(style = "font-size: 42px; font-weight: 800; color: #f59e0b;", uiOutput("landing_total_cases", inline = TRUE)),
-                  tags$p("Cases Logged", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
-              ),
-              div(style = "text-align: center; min-width: 150px;",
-                  tags$div(style = "font-size: 42px; font-weight: 800; color: #10b981;", uiOutput("landing_resolved_cases", inline = TRUE)),
-                  tags$p("Cases Resolved", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
-              ),
-              div(style = "text-align: center; min-width: 150px;",
-                  tags$div(style = "font-size: 42px; font-weight: 800; color: #3b82f6;", "16"),
-                  tags$p("Regions Covered", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
-              ),
-              div(style = "text-align: center; min-width: 150px;",
-                  tags$div(style = "font-size: 42px; font-weight: 800; color: #8b5cf6;", "24/7"),
-                  tags$p("Support Available", style = "color: #94a3b8; margin: 5px 0 0 0; font-size: 14px;")
+
+      # Hero section - professional colored banner
+      div(style = "background: #1e3a8a; padding: 56px 40px 48px 40px;",
+          div(style = "max-width: 760px; margin: 0 auto; text-align: center;",
+              tags$p("GHANA EDUCATION SERVICE", style = "color: rgba(255,255,255,0.65); font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px 0;"),
+              tags$h1("Teacher Support Helpline", style = "color: #ffffff; font-size: 32px; font-weight: 700; margin: 0 0 16px 0; line-height: 1.3;"),
+              tags$p("A centralized case management system serving teachers across all 16 regions of Ghana. Log queries, track resolutions, and monitor performance.",
+                     style = "color: rgba(255,255,255,0.75); font-size: 16px; line-height: 1.6; max-width: 580px; margin: 0 auto 28px auto;"),
+
+              div(style = "display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;",
+                  actionButton("hero_login_btn", "Staff Login",
+                               class = "btn", style = "background: #ffffff; color: #1e3a8a; border: none; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 600;"),
+                  actionButton("hero_analytics_btn", "View Public Analytics",
+                               class = "btn", style = "background: transparent; border: 1px solid rgba(255,255,255,0.4); color: #ffffff; padding: 10px 28px; border-radius: 6px; font-size: 15px; font-weight: 500;")
               )
           )
       ),
-      
-      # Feature cards
-      div(style = "display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; padding: 0 40px 40px 40px; max-width: 1200px; margin: 0 auto;",
-          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("headset")),
-              tags$h3("Case Management", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-              tags$p("Log, track, and resolve teacher queries efficiently across all regions.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
-          ),
-          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("chart-line")),
-              tags$h3("Real-Time Analytics", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-              tags$p("Public dashboards showing regional performance, SLA monitoring, and trend analysis.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
-          ),
-          div(style = "background: rgba(255,255,255,0.1); border-radius: 16px; padding: 30px; flex: 1; min-width: 250px; max-width: 320px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.15);",
-              tags$div(style = "font-size: 36px; margin-bottom: 15px;", icon("shield-alt")),
-              tags$h3("Role-Based Access", style = "color: white; font-size: 20px; font-weight: 600; margin-bottom: 10px;"),
-              tags$p("Secure access with regional controls. National staff see all; regional staff see their cases.", style = "color: #94a3b8; font-size: 14px; line-height: 1.6;")
-          )
-      ),
-      
-      # How It Works Section
-      div(style = "background: rgba(255,255,255,0.05); padding: 50px 40px; margin-bottom: 0;",
-          div(style = "max-width: 1000px; margin: 0 auto;",
-              tags$h3("How It Works", style = "color: white; text-align: center; margin-bottom: 40px; font-size: 28px; font-weight: 600;"),
-              div(style = "display: flex; justify-content: space-between; flex-wrap: wrap; gap: 30px;",
-                  div(style = "flex: 1; min-width: 200px; text-align: center;",
-                      div(style = "width: 60px; height: 60px; background: #f59e0b; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
-                          tags$span("1", style = "color: white; font-size: 24px; font-weight: 700;")
-                      ),
-                      tags$h4("Report Issue", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
-                      tags$p("Teacher contacts regional helpline with their query or concern", style = "color: #94a3b8; font-size: 14px;")
+
+      # Live Statistics - clean cards on light background
+      div(style = "background: #f8fafc; padding: 36px 40px; border-bottom: 1px solid #e5e7eb;",
+          div(style = "max-width: 960px; margin: 0 auto;",
+              div(style = "display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;",
+                  div(style = "flex: 1; min-width: 180px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px;",
+                      tags$p("Total Cases Logged", style = "color: #6b7280; font-size: 12px; font-weight: 500; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;"),
+                      tags$div(style = "font-size: 28px; font-weight: 700; color: #111827;", uiOutput("landing_total_cases", inline = TRUE))
                   ),
-                  div(style = "flex: 1; min-width: 200px; text-align: center;",
-                      div(style = "width: 60px; height: 60px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
-                          tags$span("2", style = "color: white; font-size: 24px; font-weight: 700;")
-                      ),
-                      tags$h4("Case Logged", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
-                      tags$p("Regional coordinator logs the case in the system with all details", style = "color: #94a3b8; font-size: 14px;")
+                  div(style = "flex: 1; min-width: 180px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px;",
+                      tags$p("Cases Resolved", style = "color: #6b7280; font-size: 12px; font-weight: 500; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;"),
+                      tags$div(style = "font-size: 28px; font-weight: 700; color: #111827;", uiOutput("landing_resolved_cases", inline = TRUE))
                   ),
-                  div(style = "flex: 1; min-width: 200px; text-align: center;",
-                      div(style = "width: 60px; height: 60px; background: #8b5cf6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
-                          tags$span("3", style = "color: white; font-size: 24px; font-weight: 700;")
-                      ),
-                      tags$h4("Track & Resolve", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
-                      tags$p("Case is tracked, escalated if needed, and resolved with follow-ups", style = "color: #94a3b8; font-size: 14px;")
+                  div(style = "flex: 1; min-width: 180px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px;",
+                      tags$p("Regions Covered", style = "color: #6b7280; font-size: 12px; font-weight: 500; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;"),
+                      tags$div(style = "font-size: 28px; font-weight: 700; color: #111827;", "16")
                   ),
-                  div(style = "flex: 1; min-width: 200px; text-align: center;",
-                      div(style = "width: 60px; height: 60px; background: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px auto;",
-                          tags$span("4", style = "color: white; font-size: 24px; font-weight: 700;")
-                      ),
-                      tags$h4("Teacher Notified", style = "color: white; font-size: 18px; margin-bottom: 10px;"),
-                      tags$p("Teacher receives updates and resolution notification", style = "color: #94a3b8; font-size: 14px;")
+                  div(style = "flex: 1; min-width: 180px; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px;",
+                      tags$p("Support Available", style = "color: #6b7280; font-size: 12px; font-weight: 500; margin: 0 0 6px 0; text-transform: uppercase; letter-spacing: 0.5px;"),
+                      tags$div(style = "font-size: 28px; font-weight: 700; color: #111827;", "24/7")
                   )
               )
           )
       ),
-      
+
+      # Feature cards - white cards, no glassmorphism
+      div(style = "padding: 48px 40px; background: #ffffff;",
+          div(style = "max-width: 960px; margin: 0 auto;",
+              tags$h2("Key Features", style = "color: #111827; font-size: 20px; font-weight: 600; margin: 0 0 24px 0; text-align: center;"),
+              div(style = "display: flex; gap: 20px; flex-wrap: wrap;",
+                  div(style = "flex: 1; min-width: 240px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;",
+                      div(style = "width: 40px; height: 40px; background: #dbeafe; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;",
+                          icon("headset", style = "color: #1e3a8a; font-size: 18px;")
+                      ),
+                      tags$h3("Case Management", style = "color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 8px 0;"),
+                      tags$p("Log, track, and resolve teacher queries efficiently across all regions.", style = "color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;")
+                  ),
+                  div(style = "flex: 1; min-width: 240px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;",
+                      div(style = "width: 40px; height: 40px; background: #dbeafe; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;",
+                          icon("chart-line", style = "color: #1e3a8a; font-size: 18px;")
+                      ),
+                      tags$h3("Real-Time Analytics", style = "color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 8px 0;"),
+                      tags$p("Regional performance dashboards, SLA monitoring, and trend analysis.", style = "color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;")
+                  ),
+                  div(style = "flex: 1; min-width: 240px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px;",
+                      div(style = "width: 40px; height: 40px; background: #dbeafe; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;",
+                          icon("shield-alt", style = "color: #1e3a8a; font-size: 18px;")
+                      ),
+                      tags$h3("Role-Based Access", style = "color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 8px 0;"),
+                      tags$p("Secure access with regional controls for national and regional staff.", style = "color: #6b7280; font-size: 14px; line-height: 1.5; margin: 0;")
+                  )
+              )
+          )
+      ),
+
+      # How It Works - clean numbered steps
+      div(style = "padding: 48px 40px; background: #f8fafc; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;",
+          div(style = "max-width: 800px; margin: 0 auto;",
+              tags$h2("How It Works", style = "color: #111827; font-size: 20px; font-weight: 600; text-align: center; margin: 0 0 32px 0;"),
+              div(style = "display: flex; justify-content: space-between; flex-wrap: wrap; gap: 24px;",
+                  div(style = "flex: 1; min-width: 160px; text-align: center;",
+                      div(style = "width: 40px; height: 40px; background: #1e3a8a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;",
+                          tags$span("1", style = "color: white; font-size: 16px; font-weight: 600;")
+                      ),
+                      tags$h4("Report Issue", style = "color: #111827; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;"),
+                      tags$p("Teacher contacts the regional helpline", style = "color: #6b7280; font-size: 13px; line-height: 1.5; margin: 0;")
+                  ),
+                  div(style = "flex: 1; min-width: 160px; text-align: center;",
+                      div(style = "width: 40px; height: 40px; background: #1e3a8a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;",
+                          tags$span("2", style = "color: white; font-size: 16px; font-weight: 600;")
+                      ),
+                      tags$h4("Case Logged", style = "color: #111827; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;"),
+                      tags$p("Coordinator logs the case with full details", style = "color: #6b7280; font-size: 13px; line-height: 1.5; margin: 0;")
+                  ),
+                  div(style = "flex: 1; min-width: 160px; text-align: center;",
+                      div(style = "width: 40px; height: 40px; background: #1e3a8a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;",
+                          tags$span("3", style = "color: white; font-size: 16px; font-weight: 600;")
+                      ),
+                      tags$h4("Track & Resolve", style = "color: #111827; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;"),
+                      tags$p("Case tracked, escalated if needed, and resolved", style = "color: #6b7280; font-size: 13px; line-height: 1.5; margin: 0;")
+                  ),
+                  div(style = "flex: 1; min-width: 160px; text-align: center;",
+                      div(style = "width: 40px; height: 40px; background: #1e3a8a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px auto;",
+                          tags$span("4", style = "color: white; font-size: 16px; font-weight: 600;")
+                      ),
+                      tags$h4("Teacher Notified", style = "color: #111827; font-size: 15px; font-weight: 600; margin: 0 0 6px 0;"),
+                      tags$p("Teacher receives updates and resolution", style = "color: #6b7280; font-size: 13px; line-height: 1.5; margin: 0;")
+                  )
+              )
+          )
+      ),
+
       # Contact Section
-      div(style = "padding: 50px 40px; background: rgba(0,0,0,0.15);",
-          div(style = "max-width: 1000px; margin: 0 auto; text-align: center;",
-              tags$h3("Contact Your Regional Helpline", style = "color: white; margin-bottom: 30px; font-size: 24px; font-weight: 600;"),
+      div(style = "padding: 48px 40px; background: #ffffff;",
+          div(style = "max-width: 800px; margin: 0 auto; text-align: center;",
+              tags$h2("Contact Your Regional Helpline", style = "color: #111827; font-size: 20px; font-weight: 600; margin: 0 0 10px 0;"),
               tags$p("Each region has a dedicated support coordinator. Contact your regional office for assistance.",
-                     style = "color: #94a3b8; margin-bottom: 30px; font-size: 16px;"),
-              div(style = "display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;",
+                     style = "color: #6b7280; font-size: 15px; margin: 0 0 28px 0;"),
+              div(style = "display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;",
                   div(style = "text-align: center;",
-                      icon("envelope", style = "font-size: 28px; color: #f59e0b; margin-bottom: 10px;"),
-                      tags$p("Email", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
-                      tags$p("enquiry.[region]region@gmail.com", style = "color: #94a3b8; font-size: 14px;")
+                      icon("envelope", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
+                      tags$p("Email", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("enquiry.[region]@ges.gov.gh", style = "color: #6b7280; font-size: 13px; margin: 0;")
                   ),
                   div(style = "text-align: center;",
-                      icon("clock", style = "font-size: 28px; color: #3b82f6; margin-bottom: 10px;"),
-                      tags$p("Hours", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
-                      tags$p("Monday - Friday: 8am - 5pm", style = "color: #94a3b8; font-size: 14px;")
+                      icon("clock", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
+                      tags$p("Hours", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("Monday \u2013 Friday, 8 am \u2013 5 pm", style = "color: #6b7280; font-size: 13px; margin: 0;")
                   ),
                   div(style = "text-align: center;",
-                      icon("map-marker-alt", style = "font-size: 28px; color: #10b981; margin-bottom: 10px;"),
-                      tags$p("Coverage", style = "color: white; font-weight: 600; margin-bottom: 5px;"),
-                      tags$p("All 16 Regions of Ghana", style = "color: #94a3b8; font-size: 14px;")
+                      icon("map-marker-alt", style = "font-size: 20px; color: #1e3a8a; margin-bottom: 8px;"),
+                      tags$p("Coverage", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 14px;"),
+                      tags$p("All 16 Regions of Ghana", style = "color: #6b7280; font-size: 13px; margin: 0;")
                   )
               )
           )
       ),
-      
+
       # Footer
-      div(style = "text-align: center; padding: 30px; border-top: 1px solid rgba(255,255,255,0.1);",
-          tags$p("Ghana Education Service - Ministry of Education", style = "color: #64748b; font-size: 13px; margin: 0 0 5px 0;"),
-          tags$p(paste0("Teacher Support Helpline System ", format(Sys.Date(), "%Y")), style = "color: #475569; font-size: 12px; margin: 0;")
+      div(style = "text-align: center; padding: 24px 40px; background: #f8fafc; border-top: 1px solid #e5e7eb;",
+          tags$p(HTML("Ghana Education Service &mdash; Ministry of Education"), style = "color: #6b7280; font-size: 13px; margin: 0 0 4px 0;"),
+          tags$p(paste0("Teacher Support Helpline System ", format(Sys.Date(), "%Y")), style = "color: #9ca3af; font-size: 12px; margin: 0;")
       )
   ),
   
@@ -1039,9 +1064,9 @@ ui <- tagList(
   # ========================================
   hidden(
     div(id = "login_overlay",
-        style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #1e40af 100%); display: flex; align-items: center; justify-content: center;",
-        
-        div(style = "background: white; border-radius: 16px; padding: 40px; width: 420px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
+        style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: #f1f5f9; display: flex; align-items: center; justify-content: center;",
+
+        div(style = "background: white; border-radius: 8px; padding: 36px; width: 400px; max-width: 90%; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); border: 1px solid #e5e7eb;",
             
             # Back button
             div(style = "margin-bottom: 20px;",
@@ -1049,9 +1074,11 @@ ui <- tagList(
                              class = "btn btn-link", style = "color: #6b7280; padding: 0; font-size: 14px; text-decoration: none;")
             ),
             
-            div(style = "text-align: center; margin-bottom: 30px;",
-                tags$div(icon("user-shield"), style = "font-size: 48px; color: #1e3a8a; margin-bottom: 15px;"),
-                tags$h2("Staff Login", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 5px 0;"),
+            div(style = "text-align: center; margin-bottom: 24px;",
+                div(style = "width: 44px; height: 44px; background: #dbeafe; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;",
+                    icon("user-shield", style = "font-size: 20px; color: #1e3a8a;")
+                ),
+                tags$h2("Staff Login", style = "color: #111827; font-weight: 600; margin: 0 0 4px 0; font-size: 22px;"),
                 tags$p("Sign in with your GES email address", style = "color: #6b7280; margin: 0; font-size: 14px;")
             ),
             
@@ -1080,11 +1107,13 @@ ui <- tagList(
     div(id = "password_change_overlay",
         style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100001; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;",
         
-        div(style = "background: white; border-radius: 16px; padding: 40px; width: 450px; max-width: 90%; box-shadow: 0 25px 50px rgba(0,0,0,0.3);",
-            
+        div(style = "background: white; border-radius: 8px; padding: 36px; width: 450px; max-width: 90%; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); border: 1px solid #e5e7eb;",
+
             div(style = "text-align: center; margin-bottom: 25px;",
-                tags$div(icon("key"), style = "font-size: 48px; color: #f59e0b; margin-bottom: 15px;"),
-                tags$h2("Change Your Password", style = "color: #1e3a8a; font-weight: 700; margin: 0 0 10px 0;"),
+                div(style = "width: 44px; height: 44px; background: #fef3c7; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;",
+                    icon("key", style = "font-size: 20px; color: #92400e;")
+                ),
+                tags$h2("Change Your Password", style = "color: #111827; font-weight: 600; margin: 0 0 10px 0; font-size: 22px;"),
                 uiOutput("password_change_subtitle")
             ),
             
