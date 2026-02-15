@@ -910,13 +910,13 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_
     }
     
     if (!is.null(date_from) && !is.na(date_from)) {
-      base_query <- paste(base_query, "AND DATE(t.created_at) >= ?")
-      params <- append(params, as.character(date_from))
+      base_query <- paste(base_query, "AND t.created_at >= ?")
+      params <- append(params, paste0(as.character(date_from), " 00:00:00"))
     }
-    
+
     if (!is.null(date_to) && !is.na(date_to)) {
-      base_query <- paste(base_query, "AND DATE(t.created_at) <= ?")
-      params <- append(params, as.character(date_to))
+      base_query <- paste(base_query, "AND t.created_at < DATE_ADD(?, INTERVAL 1 DAY)")
+      params <- append(params, paste0(as.character(date_to), " 00:00:00"))
     }
     
     base_query <- paste(base_query, "ORDER BY t.created_at DESC LIMIT ?")
@@ -3083,23 +3083,27 @@ server <- function(input, output, session) {
     output$login_msg <- renderText("")
   })
   
-  # --- Landing page live statistics ---
-  output$landing_total_cases <- renderUI({
+  # --- Landing page live statistics (cached, refreshes every 2 minutes) ---
+  landing_stats <- reactive({
+    invalidateLater(120000)  # Refresh every 2 minutes, not on every render
     tryCatch({
-      count <- dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets")$count
-      tags$span(format(count, big.mark = ","))
+      list(
+        total = dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets")$count,
+        resolved = dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets WHERE status IN ('Resolved', 'Closed')")$count
+      )
     }, error = function(e) {
-      tags$span("--")
+      list(total = 0, resolved = 0)
     })
   })
-  
+
+  output$landing_total_cases <- renderUI({
+    stats <- landing_stats()
+    tags$span(format(stats$total, big.mark = ","))
+  })
+
   output$landing_resolved_cases <- renderUI({
-    tryCatch({
-      count <- dbGetQuery(pool, "SELECT COUNT(*) as count FROM tickets WHERE status IN ('Resolved', 'Closed')")$count
-      tags$span(format(count, big.mark = ","))
-    }, error = function(e) {
-      tags$span("--")
-    })
+    stats <- landing_stats()
+    tags$span(format(stats$resolved, big.mark = ","))
   })
   
   # --- Observe page state changes and show/hide overlays ---
@@ -3940,15 +3944,24 @@ server <- function(input, output, session) {
     paste("Auto-refreshes every 5 min | Last:", format(Sys.time(), "%H:%M:%S"))
   })
   
+  # Cooldown to prevent rapid-fire refresh clicks
+  last_dashboard_refresh <- reactiveVal(as.numeric(Sys.time()) - 5)
+
   observeEvent(input$manual_refresh_dashboard, {
+    now <- as.numeric(Sys.time())
+    if (now - last_dashboard_refresh() < 3) return()  # 3-second cooldown
+    last_dashboard_refresh(now)
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
   })
-  
+
   # Last refresh time tracker
   last_refresh <- reactiveVal(Sys.time())
-  
+
   # New prominent refresh button handler
   observeEvent(input$refresh_case_summary, {
+    now <- as.numeric(Sys.time())
+    if (now - last_dashboard_refresh() < 3) return()  # 3-second cooldown
+    last_dashboard_refresh(now)
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
     last_refresh(Sys.time())
     showNotification("Dashboard data refreshed!", type = "message", duration = 3)
@@ -4181,11 +4194,11 @@ server <- function(input, output, session) {
       forced_region <- user_region_id()
       if (!is.null(forced_region)) {
         count <- dbGetQuery(con(),
-                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE() AND region_id = ?",
+                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY AND region_id = ?",
                             params = list(forced_region))$cnt
       } else {
         count <- dbGetQuery(con(),
-                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND DATE(created_at) = CURDATE()")$cnt
+                            "SELECT COUNT(*) as cnt FROM tickets WHERE entry_mode = 'quick' AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY")$cnt
       }
       if (count > 0) {
         tags$span(style = "display: inline-block; padding: 6px 14px; background: #e8f5e9; border-radius: 20px; font-weight: 600; color: #2e7d32;",
@@ -4206,7 +4219,7 @@ server <- function(input, output, session) {
                                    "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
-           WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE() AND t.region_id = ?
+           WHERE t.entry_mode = 'quick' AND t.created_at >= CURDATE() AND t.created_at < CURDATE() + INTERVAL 1 DAY AND t.region_id = ?
            GROUP BY c.category_name, t.quick_outcome
            ORDER BY cnt DESC",
                                    params = list(forced_region))
@@ -4215,7 +4228,7 @@ server <- function(input, output, session) {
                                    "SELECT c.category_name, t.quick_outcome, COUNT(*) as cnt
            FROM tickets t
            LEFT JOIN issue_categories c ON t.category_id = c.category_id
-           WHERE t.entry_mode = 'quick' AND DATE(t.created_at) = CURDATE()
+           WHERE t.entry_mode = 'quick' AND t.created_at >= CURDATE() AND t.created_at < CURDATE() + INTERVAL 1 DAY
            GROUP BY c.category_name, t.quick_outcome
            ORDER BY cnt DESC")
       }
@@ -4411,7 +4424,8 @@ server <- function(input, output, session) {
                     pageLength = 15,
                     scrollX = TRUE,
                     order = list(list(1, 'desc')),
-                    processing = TRUE
+                    processing = TRUE,
+                    deferRender = TRUE
                   ),
                   escape = FALSE,
                   rownames = FALSE,
@@ -4449,7 +4463,8 @@ server <- function(input, output, session) {
                     pageLength = 20,
                     scrollX = TRUE,
                     order = list(list(1, 'desc')),
-                    processing = TRUE
+                    processing = TRUE,
+                    deferRender = TRUE
                   ),
                   escape = FALSE,
                   rownames = FALSE,
@@ -5113,51 +5128,55 @@ server <- function(input, output, session) {
     selectInput("analytics_region_select", NULL, choices = choices, selected = "all", width = "180px")
   })
 
-  # Refresh button
+  # Refresh button with cooldown
   analytics_invalidator <- reactiveVal(0)
+  last_analytics_refresh <- reactiveVal(as.numeric(Sys.time()) - 5)
   observeEvent(input$analytics_refresh_btn, {
+    now <- as.numeric(Sys.time())
+    if (now - last_analytics_refresh() < 3) return()  # 3-second cooldown
+    last_analytics_refresh(now)
     analytics_invalidator(analytics_invalidator() + 1)
   })
 
-  # --- Data reactives with filters ---
+  # --- Data reactives with filters (lazy: only run when analytics tab is active) ---
   analytics_trend_data <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_analytics_trends(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   analytics_status_dist <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_status_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   analytics_priority_dist <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_priority_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   regional_perf <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_regional_performance(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   category_trends <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_category_trends(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   monthly_series <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_time_series(con(), months_back = analytics_months(), region_id = analytics_region())
   })
 
   sla_data <- reactive({
-    req(con())
+    req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_sla_overview(con(), region_id = analytics_region())
   })
