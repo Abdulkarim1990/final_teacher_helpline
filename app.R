@@ -786,7 +786,7 @@ validate_ghana_phone <- function(phone) {
     return(list(valid = FALSE, msg = "Contact number is required.", normalized = ""))
   }
 
-  cleaned <- gsub("[\\s\\-().]", "", trimws(phone))
+  cleaned <- gsub("[^0-9+]", "", trimws(phone))
 
   # Match Ghana phone patterns
   if (grepl("^\\+233[0-9]{9}$", cleaned)) {
