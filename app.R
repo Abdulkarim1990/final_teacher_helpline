@@ -237,9 +237,9 @@ con <- function() {
 
 
 # Database helper functions
-get_regional_performance <- function(con, months_back = 12) {
+get_regional_performance <- function(con, months_back = 12, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-  
+
   q <- "
     SELECT r.region_name,
            COUNT(*) as total_cases,
@@ -254,15 +254,19 @@ get_regional_performance <- function(con, months_back = 12) {
     FROM tickets t
     LEFT JOIN regions r ON t.region_id = r.region_id
     WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY r.region_name
-    ORDER BY resolution_rate DESC, total_cases DESC
   "
-  dbGetQuery(con, q, params = list(months_back))
+  params <- list(months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    q <- paste0(q, " AND t.region_id = ?")
+    params <- c(params, list(as.integer(region_id)))
+  }
+  q <- paste0(q, " GROUP BY r.region_name ORDER BY resolution_rate DESC, total_cases DESC")
+  dbGetQuery(con, q, params = params)
 }
 
-get_category_trends <- function(con, months_back = 12) {
+get_category_trends <- function(con, months_back = 12, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-  
+
   q <- "
     SELECT DATE_FORMAT(t.created_at, '%Y-%m') as ym,
            COALESCE(c.category_name,'Unknown') as category_name,
@@ -270,15 +274,19 @@ get_category_trends <- function(con, months_back = 12) {
     FROM tickets t
     LEFT JOIN issue_categories c ON t.category_id = c.category_id
     WHERE t.created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY ym, category_name
-    ORDER BY ym ASC, cases DESC
   "
-  dbGetQuery(con, q, params = list(months_back))
+  params <- list(months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    q <- paste0(q, " AND t.region_id = ?")
+    params <- c(params, list(as.integer(region_id)))
+  }
+  q <- paste0(q, " GROUP BY ym, category_name ORDER BY ym ASC, cases DESC")
+  dbGetQuery(con, q, params = params)
 }
 
-get_time_series <- function(con, months_back = 18) {
+get_time_series <- function(con, months_back = 18, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-  
+
   q <- "
     SELECT DATE_FORMAT(created_at, '%Y-%m') as ym,
            COUNT(*) as created,
@@ -288,25 +296,42 @@ get_time_series <- function(con, months_back = 18) {
                      END),1) as avg_resolution_hours
     FROM tickets
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
-    GROUP BY ym
-    ORDER BY ym ASC
   "
-  dbGetQuery(con, q, params = list(months_back))
+  params <- list(months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    q <- paste0(q, " AND region_id = ?")
+    params <- c(params, list(as.integer(region_id)))
+  }
+  q <- paste0(q, " GROUP BY ym ORDER BY ym ASC")
+  dbGetQuery(con, q, params = params)
 }
 
-get_sla_overview <- function(con) {
+get_sla_overview <- function(con, region_id = NULL) {
   if (is.null(con)) return(list(summary=data.frame(), by_region=data.frame(), overdue=data.frame()))
-  
-  summary_q <- "
+
+  region_filter <- ""
+  region_filter_t <- ""
+  params_s <- list()
+  params_r <- list()
+  params_o <- list()
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    region_filter <- " AND region_id = ?"
+    region_filter_t <- " AND t.region_id = ?"
+    params_s <- list(as.integer(region_id))
+    params_r <- list(as.integer(region_id))
+    params_o <- list(as.integer(region_id))
+  }
+
+  summary_q <- paste0("
     SELECT
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND resolution_due_at IS NOT NULL AND resolution_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 4 HOUR) THEN 1 ELSE 0 END) as due_soon,
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND (resolution_due_at IS NULL OR resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
     FROM tickets
-  "
-  
-  by_region_q <- "
+    WHERE 1=1", region_filter)
+
+  by_region_q <- paste0("
     SELECT r.region_name,
       SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
       SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND t.resolution_due_at IS NOT NULL AND t.resolution_due_at < NOW() THEN 1 ELSE 0 END) as overdue,
@@ -314,26 +339,111 @@ get_sla_overview <- function(con) {
       SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') AND (t.resolution_due_at IS NULL OR t.resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
     FROM tickets t
     LEFT JOIN regions r ON t.region_id = r.region_id
+    WHERE 1=1", region_filter_t, "
     GROUP BY r.region_name
-    ORDER BY overdue DESC, due_soon DESC, open_cases DESC
-  "
-  
-  overdue_q <- "
+    ORDER BY overdue DESC, due_soon DESC, open_cases DESC")
+
+  overdue_q <- paste0("
     SELECT ticket_id, case_code, priority, status, created_at, resolution_due_at,
            TIMESTAMPDIFF(HOUR, resolution_due_at, NOW()) as hours_overdue
     FROM tickets
     WHERE status NOT IN ('Resolved','Closed')
       AND resolution_due_at IS NOT NULL
-      AND resolution_due_at < NOW()
+      AND resolution_due_at < NOW()", region_filter, "
     ORDER BY hours_overdue DESC
-    LIMIT 200
-  "
-  
+    LIMIT 200")
+
   list(
-    summary  = dbGetQuery(con, summary_q),
-    by_region = dbGetQuery(con, by_region_q),
-    overdue  = dbGetQuery(con, overdue_q)
+    summary  = dbGetQuery(con, summary_q, params = params_s),
+    by_region = dbGetQuery(con, by_region_q, params = params_r),
+    overdue  = dbGetQuery(con, overdue_q, params = params_o)
   )
+}
+
+# Trend comparison: current period vs previous period
+get_analytics_trends <- function(con, months_back = 3, region_id = NULL) {
+  if (is.null(con)) return(list(current = list(), previous = list()))
+
+  region_filter <- ""
+  params_cur <- list(months_back)
+  params_prev <- list(months_back, months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    region_filter <- " AND region_id = ?"
+    params_cur <- c(params_cur, list(as.integer(region_id)))
+    params_prev <- c(params_prev, list(as.integer(region_id)))
+  }
+
+  current_q <- paste0("
+    SELECT COUNT(*) as total_cases,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+           SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END) as new_cases
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)", region_filter)
+
+  previous_q <- paste0("
+    SELECT COUNT(*) as total_cases,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+           SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END) as new_cases
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+      AND created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH)", region_filter)
+
+  # Fix: previous period is (2*months_back) to (months_back) ago
+  params_prev_fixed <- list(months_back * 2, months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    params_prev_fixed <- c(params_prev_fixed, list(as.integer(region_id)))
+  }
+
+  list(
+    current = dbGetQuery(con, current_q, params = params_cur),
+    previous = dbGetQuery(con, previous_q, params = params_prev_fixed)
+  )
+}
+
+# Status distribution for summary donut
+get_status_distribution <- function(con, months_back = 3, region_id = NULL) {
+  if (is.null(con)) return(data.frame())
+
+  q <- "
+    SELECT status, COUNT(*) as count
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+  "
+  params <- list(months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    q <- paste0(q, " AND region_id = ?")
+    params <- c(params, list(as.integer(region_id)))
+  }
+  q <- paste0(q, " GROUP BY status ORDER BY count DESC")
+  dbGetQuery(con, q, params = params)
+}
+
+# Priority distribution for summary
+get_priority_distribution <- function(con, months_back = 3, region_id = NULL) {
+  if (is.null(con)) return(data.frame())
+
+  q <- "
+    SELECT priority, COUNT(*) as count
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+  "
+  params <- list(months_back)
+  if (!is.null(region_id) && region_id != "" && region_id != "all") {
+    q <- paste0(q, " AND region_id = ?")
+    params <- c(params, list(as.integer(region_id)))
+  }
+  q <- paste0(q, " GROUP BY priority ORDER BY count DESC")
+  dbGetQuery(con, q, params = params)
 }
 
 
@@ -1719,6 +1829,235 @@ ui <- tagList(
 
               /* Old sidebar styles removed - sidebar is now hidden */
 
+              /* ============================================ */
+              /* ANALYTICS DASHBOARD REDESIGN                */
+              /* ============================================ */
+
+              /* Analytics filter bar */
+              .analytics-filter-bar {
+                background: white;
+                border-radius: 12px;
+                padding: 16px 24px;
+                margin-bottom: 24px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                flex-wrap: wrap;
+                border: 1px solid #e2e8f0;
+              }
+              .analytics-filter-bar label {
+                font-weight: 600;
+                color: #475569;
+                font-size: 13px;
+                margin-bottom: 0;
+              }
+              .analytics-filter-bar .form-group {
+                margin-bottom: 0;
+              }
+              .analytics-filter-bar .form-control,
+              .analytics-filter-bar .selectize-input {
+                border-radius: 8px !important;
+                border: 1px solid #cbd5e1 !important;
+                font-size: 13px !important;
+              }
+
+              /* KPI Metric Cards */
+              .kpi-card {
+                background: white;
+                border-radius: 14px;
+                padding: 20px 24px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+                border: 1px solid #e2e8f0;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                position: relative;
+                overflow: hidden;
+              }
+              .kpi-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+              }
+              .kpi-card .kpi-icon {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                color: white;
+                margin-bottom: 12px;
+              }
+              .kpi-card .kpi-label {
+                font-size: 12px;
+                font-weight: 600;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 4px;
+              }
+              .kpi-card .kpi-value {
+                font-size: 28px;
+                font-weight: 800;
+                color: #0f172a;
+                line-height: 1.1;
+                margin-bottom: 8px;
+              }
+              .kpi-card .kpi-trend {
+                font-size: 13px;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 3px 8px;
+                border-radius: 6px;
+              }
+              .kpi-trend.trend-up {
+                color: #059669;
+                background: #ecfdf5;
+              }
+              .kpi-trend.trend-down {
+                color: #dc2626;
+                background: #fef2f2;
+              }
+              .kpi-trend.trend-neutral {
+                color: #64748b;
+                background: #f1f5f9;
+              }
+              .kpi-card .kpi-subtitle {
+                font-size: 12px;
+                color: #94a3b8;
+                margin-top: 2px;
+              }
+              .kpi-card .kpi-accent {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 4px;
+              }
+
+              /* Analytics section header */
+              .analytics-section-title {
+                font-size: 18px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .analytics-section-subtitle {
+                font-size: 13px;
+                color: #64748b;
+                margin-bottom: 20px;
+              }
+
+              /* Chart cards */
+              .chart-card {
+                background: white;
+                border-radius: 14px;
+                padding: 20px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                border: 1px solid #e2e8f0;
+                margin-bottom: 20px;
+              }
+              .chart-card .chart-title {
+                font-size: 15px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .chart-card .chart-subtitle {
+                font-size: 12px;
+                color: #94a3b8;
+                margin-bottom: 16px;
+              }
+
+              /* Analytics tab styling overrides */
+              .analytics-tabs .nav-tabs {
+                border-bottom: 2px solid #e2e8f0;
+                margin-bottom: 24px;
+              }
+              .analytics-tabs .nav-tabs > li > a {
+                border: none;
+                color: #64748b;
+                font-weight: 600;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-bottom: 3px solid transparent;
+                margin-bottom: -2px;
+                transition: all 0.2s ease;
+              }
+              .analytics-tabs .nav-tabs > li > a:hover {
+                color: #1e3a8a;
+                background: transparent;
+                border-bottom-color: #cbd5e1;
+              }
+              .analytics-tabs .nav-tabs > li.active > a,
+              .analytics-tabs .nav-tabs > li.active > a:hover,
+              .analytics-tabs .nav-tabs > li.active > a:focus {
+                color: #1e3a8a;
+                background: transparent;
+                border: none;
+                border-bottom: 3px solid #1e3a8a;
+              }
+
+              /* Stat mini cards for executive summary */
+              .stat-mini {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: white;
+                padding: 14px 16px;
+                border-radius: 10px;
+                border: 1px solid #e2e8f0;
+              }
+              .stat-mini .stat-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+              }
+              .stat-mini .stat-info {
+                flex: 1;
+              }
+              .stat-mini .stat-info .stat-label {
+                font-size: 12px;
+                color: #64748b;
+                font-weight: 500;
+              }
+              .stat-mini .stat-info .stat-val {
+                font-size: 18px;
+                font-weight: 700;
+                color: #0f172a;
+              }
+
+              /* Override shinydashboard boxes inside analytics */
+              .tab-pane .chart-card .box {
+                border: none !important;
+                box-shadow: none !important;
+                margin-bottom: 0;
+              }
+
+              /* Analytics table styling */
+              .analytics-table .dataTables_wrapper {
+                font-size: 13px;
+              }
+              .analytics-table .dataTables_wrapper .dataTables_length,
+              .analytics-table .dataTables_wrapper .dataTables_filter {
+                margin-bottom: 12px;
+              }
+
+              /* Executive summary grid */
+              .exec-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 16px;
+                margin-bottom: 24px;
+              }
+
+              /* ============================================ */
+              /* END ANALYTICS DASHBOARD REDESIGN             */
+              /* ============================================ */
+
             "))
             ),
             
@@ -2305,151 +2644,224 @@ ui <- tagList(
                 )
               ),
               
-              # Analytics Tab
+              # ============================================
+              # Analytics Tab - Redesigned
+              # ============================================
               tabItem(
                 tabName = "analytics",
-                
-                # Top KPIs
-                fluidRow(
-                  infoBoxOutput("analytics_total"),
-                  infoBoxOutput("analytics_resolved"),
-                  infoBoxOutput("analytics_resolution_rate"),
-                  infoBoxOutput("analytics_avg_time")
+
+                # Page header
+                div(style = "margin-bottom: 8px;",
+                    h2("Analytics Dashboard", class = "analytics-section-title", style = "margin-top: 0;"),
+                    p("Performance insights, SLA tracking, and trend analysis", class = "analytics-section-subtitle")
                 ),
-                
-                br(),
-                
-                tabsetPanel(
-                  id = "analytics_tabs",
-                  
-                  # 1) Regional Performance
-                  tabPanel(
-                    "Regional Performance",
-                    fluidRow(
-                      box(
-                        title = "Resolution Rate by Region",
-                        status = "primary", solidHeader = TRUE,
-                        width = 8, height = 420,
-                        withSpinner(plotlyOutput("region_resolution_chart", height = "360px"))
-                      ),
-                      box(
-                        title = "Backlog by Region",
-                        status = "info", solidHeader = TRUE,
-                        width = 4, height = 420,
-                        withSpinner(plotlyOutput("region_backlog_chart", height = "360px"))
-                      )
+
+                # Filter bar
+                div(class = "analytics-filter-bar",
+                    tags$i(class = "fas fa-filter", style = "color: #94a3b8; font-size: 16px;"),
+                    div(style = "min-width: 140px;",
+                        selectInput("analytics_period", NULL,
+                                    choices = c("Last 30 Days" = "1",
+                                                "Last 3 Months" = "3",
+                                                "Last 6 Months" = "6",
+                                                "Last 12 Months" = "12",
+                                                "Last 18 Months" = "18"),
+                                    selected = "3", width = "160px")
                     ),
-                    fluidRow(
-                      box(
-                        title = "Regional Performance Table",
-                        status = "primary", solidHeader = TRUE,
-                        width = 12,
-                        withSpinner(DTOutput("region_table"))
-                      )
-                    )
-                  ),
-                  
-                  # 2) Category Trends
-                  tabPanel(
-                    "Category Trends",
-                    fluidRow(
-                      box(
-                        title = "Top Categories Over Time",
-                        status = "primary", solidHeader = TRUE,
-                        width = 8, height = 420,
-                        withSpinner(plotlyOutput("category_trend_chart", height = "360px"))
-                      ),
-                      box(
-                        title = "Current Month Movement",
-                        status = "warning", solidHeader = TRUE,
-                        width = 4, height = 420,
-                        withSpinner(DTOutput("category_movement_table"))
-                      )
+                    div(style = "min-width: 170px;",
+                        uiOutput("analytics_region_filter")
                     ),
-                    fluidRow(
-                      box(
-                        title = "Category Trend Table (All)",
-                        status = "primary", solidHeader = TRUE,
-                        width = 12,
-                        withSpinner(DTOutput("category_trend_table"))
-                      )
+                    div(style = "margin-left: auto; display: flex; align-items: center; gap: 8px;",
+                        downloadButton("export_excel", "Export Excel",
+                                       class = "btn btn-sm",
+                                       style = "background: #1e3a8a; color: white; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 600; font-size: 13px;"),
+                        actionButton("analytics_refresh_btn", label = NULL,
+                                     icon = icon("sync-alt"),
+                                     class = "btn btn-sm",
+                                     style = "background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; color: #475569;")
                     )
-                  ),
-                  
-                  # 3) SLA Monitoring
-                  tabPanel(
-                    "SLA Monitoring",
-                    fluidRow(
-                      box(
-                        title = "SLA Overview",
-                        status = "primary", solidHeader = TRUE,
-                        width = 6, height = 360,
-                        withSpinner(plotlyOutput("sla_overview_chart", height = "300px"))
-                      ),
-                      box(
-                        title = "SLA by Region",
-                        status = "info", solidHeader = TRUE,
-                        width = 6, height = 360,
-                        withSpinner(plotlyOutput("sla_region_chart", height = "300px"))
-                      )
-                    ),
-                    fluidRow(
-                      box(
-                        title = "Overdue Cases",
-                        status = "danger", solidHeader = TRUE,
-                        width = 12,
-                        withSpinner(DTOutput("sla_overdue_table"))
-                      )
-                    )
-                  ),
-                  
-                  # 4) Time Series
-                  tabPanel(
-                    "Time Series",
-                    fluidRow(
-                      box(
-                        title = "Monthly Created vs Resolved",
-                        status = "primary", solidHeader = TRUE,
-                        width = 8, height = 420,
-                        withSpinner(plotlyOutput("monthly_created_resolved_chart", height = "360px"))
-                      ),
-                      box(
-                        title = "Average Resolution Time (Hours)",
-                        status = "info", solidHeader = TRUE,
-                        width = 4, height = 420,
-                        withSpinner(plotlyOutput("monthly_avg_resolution_chart", height = "360px"))
-                      )
-                    ),
-                    fluidRow(
-                      box(
-                        title = "Monthly Trend Table",
-                        status = "primary", solidHeader = TRUE,
-                        width = 12,
-                        withSpinner(DTOutput("monthly_trend_table"))
-                      )
-                    )
-                  ),
-                  
-                  # 5) Exports
-                  tabPanel(
-                    "Exports",
-                    fluidRow(
-                      box(
-                        title = "Export Reports",
-                        status = "primary", solidHeader = TRUE,
-                        width = 12,
-                        p("Download the latest analytics outputs for reporting and briefings."),
+                ),
+
+                # Tabs
+                div(class = "analytics-tabs",
+                    tabsetPanel(
+                      id = "analytics_tabs",
+
+                      # ===== 1) Executive Summary =====
+                      tabPanel(
+                        title = tagList(icon("tachometer-alt"), " Overview"),
+                        value = "overview",
                         br(),
-                        downloadButton("export_excel", "Download Excel", class = "btn-primary"),
-                        tags$span(style = "padding-left: 10px;"),
-                        downloadButton("export_pdf", "Download PDF", class = "btn-secondary"),
-                        br(), br(),
-                        tags$small("Note: PDF export may require additional server setup (R Markdown/LaTeX). If unavailable, we can export HTML instead.")
+                        # KPI Cards row
+                        fluidRow(
+                          column(3, uiOutput("kpi_total_cases")),
+                          column(3, uiOutput("kpi_resolved")),
+                          column(3, uiOutput("kpi_resolution_rate")),
+                          column(3, uiOutput("kpi_avg_time"))
+                        ),
+                        br(),
+                        # Second row of KPIs
+                        fluidRow(
+                          column(3, uiOutput("kpi_open_cases")),
+                          column(3, uiOutput("kpi_escalated")),
+                          column(3, uiOutput("kpi_new_cases")),
+                          column(3, uiOutput("kpi_sla_overdue"))
+                        ),
+                        br(),
+                        # Overview charts
+                        fluidRow(
+                          column(8,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Cases Over Time"),
+                                     div(class = "chart-subtitle", "Monthly created vs resolved cases"),
+                                     withSpinner(plotlyOutput("overview_trend_chart", height = "320px"))
+                                 )
+                          ),
+                          column(4,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Status Distribution"),
+                                     div(class = "chart-subtitle", "Current case status breakdown"),
+                                     withSpinner(plotlyOutput("overview_status_donut", height = "320px"))
+                                 )
+                          )
+                        ),
+                        fluidRow(
+                          column(6,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Priority Breakdown"),
+                                     div(class = "chart-subtitle", "Cases by priority level"),
+                                     withSpinner(plotlyOutput("overview_priority_chart", height = "280px"))
+                                 )
+                          ),
+                          column(6,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Top Issue Categories"),
+                                     div(class = "chart-subtitle", "Most common case categories"),
+                                     withSpinner(plotlyOutput("overview_top_categories_chart", height = "280px"))
+                                 )
+                          )
+                        )
+                      ),
+
+                      # ===== 2) Regional Performance =====
+                      tabPanel(
+                        title = tagList(icon("map-marked-alt"), " Regional"),
+                        value = "regional",
+                        br(),
+                        fluidRow(
+                          column(8,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Resolution Rate by Region"),
+                                     div(class = "chart-subtitle", "Percentage of cases resolved per region"),
+                                     withSpinner(plotlyOutput("region_resolution_chart", height = "380px"))
+                                 )
+                          ),
+                          column(4,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Open Backlog"),
+                                     div(class = "chart-subtitle", "Unresolved cases by region"),
+                                     withSpinner(plotlyOutput("region_backlog_chart", height = "380px"))
+                                 )
+                          )
+                        ),
+                        div(class = "chart-card analytics-table",
+                            div(class = "chart-title", "Regional Performance Details"),
+                            div(class = "chart-subtitle", "Comprehensive metrics per region"),
+                            withSpinner(DTOutput("region_table"))
+                        )
+                      ),
+
+                      # ===== 3) Category Trends =====
+                      tabPanel(
+                        title = tagList(icon("tags"), " Categories"),
+                        value = "categories",
+                        br(),
+                        fluidRow(
+                          column(8,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Top Categories Over Time"),
+                                     div(class = "chart-subtitle", "Monthly trend for top 5 issue categories"),
+                                     withSpinner(plotlyOutput("category_trend_chart", height = "380px"))
+                                 )
+                          ),
+                          column(4,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Month-over-Month Change"),
+                                     div(class = "chart-subtitle", "Category movement vs previous month"),
+                                     withSpinner(DTOutput("category_movement_table"))
+                                 )
+                          )
+                        ),
+                        div(class = "chart-card analytics-table",
+                            div(class = "chart-title", "Category Breakdown"),
+                            div(class = "chart-subtitle", "All categories by month"),
+                            withSpinner(DTOutput("category_trend_table"))
+                        )
+                      ),
+
+                      # ===== 4) SLA Monitoring =====
+                      tabPanel(
+                        title = tagList(icon("clock"), " SLA"),
+                        value = "sla",
+                        br(),
+                        fluidRow(
+                          column(4,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "SLA Health"),
+                                     div(class = "chart-subtitle", "On track, at risk, and overdue"),
+                                     withSpinner(plotlyOutput("sla_overview_chart", height = "320px"))
+                                 )
+                          ),
+                          column(8,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "SLA Compliance by Region"),
+                                     div(class = "chart-subtitle", "Regional breakdown of SLA status"),
+                                     withSpinner(plotlyOutput("sla_region_chart", height = "320px"))
+                                 )
+                          )
+                        ),
+                        div(class = "chart-card analytics-table",
+                            div(style = "display: flex; align-items: center; gap: 8px; margin-bottom: 4px;",
+                                div(class = "chart-title", style = "margin-bottom: 0;", "Overdue Cases"),
+                                tags$span(style = "background: #fef2f2; color: #dc2626; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;",
+                                          textOutput("sla_overdue_count", inline = TRUE))
+                            ),
+                            div(class = "chart-subtitle", "Cases that have breached their SLA deadline"),
+                            withSpinner(DTOutput("sla_overdue_table"))
+                        )
+                      ),
+
+                      # ===== 5) Time Series =====
+                      tabPanel(
+                        title = tagList(icon("chart-line"), " Trends"),
+                        value = "trends",
+                        br(),
+                        fluidRow(
+                          column(8,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Monthly Created vs Resolved"),
+                                     div(class = "chart-subtitle", "Case volume inflow and outflow over time"),
+                                     withSpinner(plotlyOutput("monthly_created_resolved_chart", height = "380px"))
+                                 )
+                          ),
+                          column(4,
+                                 div(class = "chart-card",
+                                     div(class = "chart-title", "Avg Resolution Time"),
+                                     div(class = "chart-subtitle", "Monthly average hours to resolve"),
+                                     withSpinner(plotlyOutput("monthly_avg_resolution_chart", height = "380px"))
+                                 )
+                          )
+                        ),
+                        div(class = "chart-card analytics-table",
+                            div(class = "chart-title", "Monthly Trend Data"),
+                            div(class = "chart-subtitle", "Raw monthly figures for created, resolved, and resolution time"),
+                            withSpinner(DTOutput("monthly_trend_table"))
+                        )
                       )
-                    )
-                  )
-                )
-              )
+
+                    ) # end tabsetPanel
+                ) # end analytics-tabs div
+              ) # end tabItem
               ####
             )
           )
@@ -4557,246 +4969,627 @@ server <- function(input, output, session) {
     p
   })
   
-  # Analytics outputs (existing)
-  analytics_stats <- reactive({
-    get_dashboard_stats(con())
+  # ========================================
+  # ANALYTICS DASHBOARD (Redesigned)
+  # ========================================
+
+  # Shared plotly theme
+  plotly_font <- list(family = "system-ui, -apple-system, sans-serif", color = "#334155")
+  plotly_layout_base <- list(
+    font = plotly_font,
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent",
+    margin = list(l = 40, r = 20, t = 30, b = 40),
+    xaxis = list(gridcolor = "#f1f5f9", zerolinecolor = "#e2e8f0"),
+    yaxis = list(gridcolor = "#f1f5f9", zerolinecolor = "#e2e8f0")
+  )
+  chart_colors <- c("#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe")
+  status_colors <- c("New" = "#3b82f6", "In Progress" = "#f59e0b", "Waiting on Teacher" = "#8b5cf6",
+                      "Escalated" = "#dc2626", "Resolved" = "#16a085", "Closed" = "#6b7280")
+  priority_colors <- c("Urgent" = "#7c2d12", "High" = "#dc2626", "Medium" = "#ea580c", "Low" = "#16a085")
+
+  # --- Filter reactives ---
+  analytics_months <- reactive({
+    m <- input$analytics_period
+    if (is.null(m)) 3 else as.integer(m)
   })
-  
-  output$analytics_total <- renderInfoBox({
-    stats <- analytics_stats()
-    total <- sum(stats$status$count, na.rm = TRUE)
-    infoBox("Total Cases", total, icon = icon("list"), color = "blue")
+
+  analytics_region <- reactive({
+    r <- input$analytics_region_select
+    if (is.null(r) || r == "" || r == "all") NULL else r
   })
-  
-  output$analytics_resolved <- renderInfoBox({
-    stats <- analytics_stats()
-    resolved <- sum(stats$status$count[stats$status$status %in% c("Resolved", "Closed")], na.rm = TRUE)
-    infoBox("Resolved", resolved, icon = icon("check"), color = "green")
-  })
-  
-  output$analytics_resolution_rate <- renderInfoBox({
-    stats <- analytics_stats()
-    total <- sum(stats$status$count, na.rm = TRUE)
-    resolved <- sum(stats$status$count[stats$status$status %in% c("Resolved", "Closed")], na.rm = TRUE)
-    rate <- if(total > 0) round((resolved / total) * 100, 1) else 0
-    infoBox("Resolution Rate", paste0(rate, "%"), icon = icon("percentage"), color = "purple")
-  })
-  
-  output$analytics_avg_time <- renderInfoBox({
-    stats <- analytics_stats()
-    avg_hours <- if (length(stats$averages$avg_resolution_hours) > 0 && !is.na(stats$averages$avg_resolution_hours[1])) {
-      round(stats$averages$avg_resolution_hours[1], 1)
-    } else {
-      0
+
+  # Region filter UI
+  output$analytics_region_filter <- renderUI({
+    regions_df <- get_regions(con())
+    choices <- c("All Regions" = "all")
+    if (nrow(regions_df) > 0) {
+      region_choices <- setNames(as.character(regions_df$region_id), regions_df$region_name)
+      choices <- c(choices, region_choices)
     }
-    infoBox("Avg Resolution", paste(avg_hours, "hours"), icon = icon("clock"), color = "orange")
+    selectInput("analytics_region_select", NULL, choices = choices, selected = "all", width = "180px")
   })
-  
-  
-  # ----------------------------
-  # Advanced Analytics reactives
-  # ----------------------------
+
+  # Refresh button
+  analytics_invalidator <- reactiveVal(0)
+  observeEvent(input$analytics_refresh_btn, {
+    analytics_invalidator(analytics_invalidator() + 1)
+  })
+
+  # --- Data reactives with filters ---
+  analytics_trend_data <- reactive({
+    req(con())
+    analytics_invalidator()
+    get_analytics_trends(con(), months_back = analytics_months(), region_id = analytics_region())
+  })
+
+  analytics_status_dist <- reactive({
+    req(con())
+    analytics_invalidator()
+    get_status_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
+  })
+
+  analytics_priority_dist <- reactive({
+    req(con())
+    analytics_invalidator()
+    get_priority_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
+  })
+
   regional_perf <- reactive({
     req(con())
-    get_regional_performance(con(), months_back = 12)
+    analytics_invalidator()
+    get_regional_performance(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-  
+
   category_trends <- reactive({
     req(con())
-    get_category_trends(con(), months_back = 12)
+    analytics_invalidator()
+    get_category_trends(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-  
+
   monthly_series <- reactive({
     req(con())
-    get_time_series(con(), months_back = 18)
+    analytics_invalidator()
+    get_time_series(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-  
+
   sla_data <- reactive({
     req(con())
-    get_sla_overview(con())
+    analytics_invalidator()
+    get_sla_overview(con(), region_id = analytics_region())
   })
-  
-  # ----------------------------
-  # Regional Performance outputs
-  # ----------------------------
+
+  # --- Helper: build KPI card HTML ---
+  build_kpi_card <- function(label, value, icon_class, accent_color, trend_val = NULL, trend_label = "", icon_bg = NULL) {
+    if (is.null(icon_bg)) icon_bg <- accent_color
+
+    trend_html <- ""
+    if (!is.null(trend_val) && !is.na(trend_val)) {
+      if (trend_val > 0) {
+        trend_class <- "kpi-trend trend-up"
+        arrow <- "fa-arrow-up"
+      } else if (trend_val < 0) {
+        trend_class <- "kpi-trend trend-down"
+        arrow <- "fa-arrow-down"
+      } else {
+        trend_class <- "kpi-trend trend-neutral"
+        arrow <- "fa-minus"
+      }
+      trend_html <- paste0(
+        '<span class="', trend_class, '">',
+        '<i class="fas ', arrow, '" style="font-size: 11px;"></i> ',
+        abs(round(trend_val, 1)), '%',
+        '</span>',
+        '<div class="kpi-subtitle">', trend_label, '</div>'
+      )
+    }
+
+    tags$div(class = "kpi-card",
+             tags$div(class = "kpi-accent", style = paste0("background: ", accent_color, ";")),
+             tags$div(class = "kpi-icon", style = paste0("background: ", icon_bg, ";"),
+                      tags$i(class = paste("fas", icon_class))),
+             tags$div(class = "kpi-label", label),
+             tags$div(class = "kpi-value", value),
+             HTML(trend_html)
+    )
+  }
+
+  # --- Helper: compute % change safely ---
+  pct_change <- function(current, previous) {
+    if (is.null(previous) || is.na(previous) || previous == 0) return(NA_real_)
+    round(((current - previous) / previous) * 100, 1)
+  }
+
+  # ===========================
+  # Executive Summary KPI Cards
+  # ===========================
+  output$kpi_total_cases <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0) d$current$total_cases[1] else 0
+    prev <- if (nrow(d$previous) > 0) d$previous$total_cases[1] else NA
+    build_kpi_card("Total Cases", format(cur, big.mark = ","), "fa-layer-group",
+                   "#1e3a8a", pct_change(cur, prev), "vs previous period")
+  })
+
+  output$kpi_resolved <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0) d$current$resolved_cases[1] else 0
+    prev <- if (nrow(d$previous) > 0) d$previous$resolved_cases[1] else NA
+    build_kpi_card("Resolved", format(cur, big.mark = ","), "fa-check-circle",
+                   "#059669", pct_change(cur, prev), "vs previous period")
+  })
+
+  output$kpi_resolution_rate <- renderUI({
+    d <- analytics_trend_data()
+    cur_total <- if (nrow(d$current) > 0) d$current$total_cases[1] else 0
+    cur_res <- if (nrow(d$current) > 0) d$current$resolved_cases[1] else 0
+    prev_total <- if (nrow(d$previous) > 0) d$previous$total_cases[1] else 0
+    prev_res <- if (nrow(d$previous) > 0) d$previous$resolved_cases[1] else 0
+    cur_rate <- if (cur_total > 0) round((cur_res / cur_total) * 100, 1) else 0
+    prev_rate <- if (prev_total > 0) round((prev_res / prev_total) * 100, 1) else NA
+    change <- if (!is.na(prev_rate) && prev_rate > 0) round(cur_rate - prev_rate, 1) else NA
+    build_kpi_card("Resolution Rate", paste0(cur_rate, "%"), "fa-percentage",
+                   "#7c3aed", change, "percentage points", icon_bg = "#7c3aed")
+  })
+
+  output$kpi_avg_time <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0 && !is.na(d$current$avg_resolution_hours[1])) round(d$current$avg_resolution_hours[1], 1) else 0
+    prev <- if (nrow(d$previous) > 0 && !is.na(d$previous$avg_resolution_hours[1])) d$previous$avg_resolution_hours[1] else NA
+    # For resolution time, lower is better so invert trend direction
+    trend <- pct_change(cur, prev)
+    if (!is.na(trend)) trend <- -trend
+    build_kpi_card("Avg Resolution", paste(cur, "hrs"), "fa-clock",
+                   "#ea580c", trend, "vs previous period (lower is better)", icon_bg = "#ea580c")
+  })
+
+  output$kpi_open_cases <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0) d$current$open_cases[1] else 0
+    prev <- if (nrow(d$previous) > 0) d$previous$open_cases[1] else NA
+    # For open cases, lower is better
+    trend <- pct_change(cur, prev)
+    if (!is.na(trend)) trend <- -trend
+    build_kpi_card("Open Cases", format(cur, big.mark = ","), "fa-folder-open",
+                   "#2563eb", trend, "vs previous period", icon_bg = "#2563eb")
+  })
+
+  output$kpi_escalated <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0) d$current$escalated_cases[1] else 0
+    prev <- if (nrow(d$previous) > 0) d$previous$escalated_cases[1] else NA
+    # For escalations, lower is better
+    trend <- pct_change(cur, prev)
+    if (!is.na(trend)) trend <- -trend
+    build_kpi_card("Escalated", format(cur, big.mark = ","), "fa-exclamation-triangle",
+                   "#dc2626", trend, "vs previous period", icon_bg = "#dc2626")
+  })
+
+  output$kpi_new_cases <- renderUI({
+    d <- analytics_trend_data()
+    cur <- if (nrow(d$current) > 0) d$current$new_cases[1] else 0
+    prev <- if (nrow(d$previous) > 0) d$previous$new_cases[1] else NA
+    build_kpi_card("New Cases", format(cur, big.mark = ","), "fa-plus-circle",
+                   "#0891b2", pct_change(cur, prev), "vs previous period", icon_bg = "#0891b2")
+  })
+
+  output$kpi_sla_overdue <- renderUI({
+    s <- sla_data()$summary
+    overdue <- if (nrow(s) > 0 && !is.na(s$overdue[1])) s$overdue[1] else 0
+    accent <- if (overdue > 0) "#dc2626" else "#059669"
+    build_kpi_card("SLA Overdue", format(overdue, big.mark = ","), "fa-exclamation-circle",
+                   accent, icon_bg = accent)
+  })
+
+  # ===========================
+  # Executive Summary Charts
+  # ===========================
+  output$overview_trend_chart <- renderPlotly({
+    df <- monthly_series()
+    if (nrow(df) == 0) return(plotly_empty())
+
+    plot_ly(df, x = ~ym) %>%
+      add_trace(y = ~created, type = "scatter", mode = "lines+markers",
+                name = "Created", line = list(color = "#3b82f6", width = 3),
+                marker = list(color = "#3b82f6", size = 7)) %>%
+      add_trace(y = ~resolved, type = "scatter", mode = "lines+markers",
+                name = "Resolved", line = list(color = "#059669", width = 3),
+                marker = list(color = "#059669", size = 7)) %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 50, r = 20, t = 10, b = 40),
+        xaxis = list(title = "", gridcolor = "#f1f5f9", tickangle = -45),
+        yaxis = list(title = "Cases", gridcolor = "#f1f5f9"),
+        legend = list(orientation = "h", x = 0, y = 1.12),
+        hovermode = "x unified"
+      )
+  })
+
+  output$overview_status_donut <- renderPlotly({
+    df <- analytics_status_dist()
+    if (nrow(df) == 0) return(plotly_empty())
+
+    colors <- sapply(df$status, function(s) {
+      if (s %in% names(status_colors)) status_colors[[s]] else "#94a3b8"
+    })
+
+    plot_ly(df, labels = ~status, values = ~count, type = "pie",
+            hole = 0.55, textinfo = "label+percent", textposition = "outside",
+            marker = list(colors = colors, line = list(color = "#ffffff", width = 2)),
+            hoverinfo = "label+value+percent") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent",
+        margin = list(l = 10, r = 10, t = 10, b = 10),
+        showlegend = FALSE,
+        annotations = list(
+          list(text = paste0("<b>", sum(df$count), "</b><br>Total"),
+               font = list(size = 16, family = "system-ui, sans-serif", color = "#0f172a"),
+               showarrow = FALSE, x = 0.5, y = 0.5)
+        )
+      )
+  })
+
+  output$overview_priority_chart <- renderPlotly({
+    df <- analytics_priority_dist()
+    if (nrow(df) == 0) return(plotly_empty())
+
+    colors <- sapply(df$priority, function(p) {
+      if (p %in% names(priority_colors)) priority_colors[[p]] else "#94a3b8"
+    })
+
+    plot_ly(df, x = ~reorder(priority, -count), y = ~count, type = "bar",
+            marker = list(color = colors, cornerradius = 6),
+            text = ~count, textposition = "outside",
+            hoverinfo = "x+y") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 40, r = 20, t = 10, b = 40),
+        xaxis = list(title = "", gridcolor = "#f1f5f9"),
+        yaxis = list(title = "Cases", gridcolor = "#f1f5f9"),
+        bargap = 0.35
+      )
+  })
+
+  output$overview_top_categories_chart <- renderPlotly({
+    df <- category_trends()
+    if (nrow(df) == 0) return(plotly_empty())
+
+    top_cats <- df %>%
+      dplyr::group_by(category_name) %>%
+      dplyr::summarise(total = sum(cases), .groups = "drop") %>%
+      dplyr::arrange(dplyr::desc(total)) %>%
+      dplyr::slice_head(n = 8)
+
+    plot_ly(top_cats, y = ~reorder(category_name, total), x = ~total, type = "bar",
+            orientation = "h",
+            marker = list(color = "#2563eb", cornerradius = 6),
+            text = ~total, textposition = "outside",
+            hoverinfo = "y+x") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 160, r = 40, t = 10, b = 40),
+        xaxis = list(title = "Total Cases", gridcolor = "#f1f5f9"),
+        yaxis = list(title = ""),
+        bargap = 0.3
+      )
+  })
+
+  # ===========================
+  # Regional Performance (Redesigned)
+  # ===========================
   output$region_resolution_chart <- renderPlotly({
     df <- regional_perf()
     if (nrow(df) == 0) return(plotly_empty())
-    
-    plot_ly(
-      df,
-      x = ~reorder(region_name, resolution_rate),
-      y = ~resolution_rate,
-      type = "bar"
-    ) %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Resolution rate (%)"))
+
+    # Color gradient based on rate
+    colors <- ifelse(df$resolution_rate >= 80, "#059669",
+                     ifelse(df$resolution_rate >= 60, "#f59e0b", "#dc2626"))
+
+    plot_ly(df, x = ~reorder(region_name, resolution_rate), y = ~resolution_rate,
+            type = "bar", marker = list(color = colors, cornerradius = 6),
+            text = ~paste0(resolution_rate, "%"), textposition = "outside",
+            hovertemplate = paste0("<b>%{x}</b><br>Resolution Rate: %{y:.1f}%",
+                                  "<br>Total: %{customdata[0]}<br>Resolved: %{customdata[1]}<extra></extra>"),
+            customdata = ~cbind(total_cases, resolved_cases)) %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 50, r = 20, t = 10, b = 80),
+        xaxis = list(title = "", tickangle = -45, gridcolor = "#f1f5f9"),
+        yaxis = list(title = "Resolution Rate (%)", gridcolor = "#f1f5f9", range = c(0, 105)),
+        bargap = 0.3
+      )
   })
-  
+
   output$region_backlog_chart <- renderPlotly({
     df <- regional_perf()
     if (nrow(df) == 0) return(plotly_empty())
-    
-    plot_ly(
-      df,
-      x = ~reorder(region_name, open_cases),
-      y = ~open_cases,
-      type = "bar",
-      orientation = "v"
-    ) %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Open cases"))
+
+    plot_ly(df, y = ~reorder(region_name, open_cases), x = ~open_cases,
+            type = "bar", orientation = "h",
+            marker = list(color = "#ef4444", cornerradius = 6),
+            text = ~open_cases, textposition = "outside",
+            hoverinfo = "y+x") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 120, r = 40, t = 10, b = 40),
+        xaxis = list(title = "Open Cases", gridcolor = "#f1f5f9"),
+        yaxis = list(title = ""),
+        bargap = 0.3
+      )
   })
-  
+
   output$region_table <- renderDT({
     df <- regional_perf()
     datatable(
       df,
       rownames = FALSE,
-      options = list(pageLength = 16, autoWidth = TRUE)
-    )
+      colnames = c("Region", "Total", "Resolved", "Rate %", "Avg Hours", "Escalated", "Esc. Rate %", "Open"),
+      options = list(
+        pageLength = 16, autoWidth = TRUE, dom = "tip",
+        columnDefs = list(
+          list(className = "dt-center", targets = 1:7)
+        )
+      )
+    ) %>%
+      formatStyle("resolution_rate",
+                  background = styleColorBar(range(0, 100), "#dbeafe"),
+                  backgroundSize = "98% 80%", backgroundRepeat = "no-repeat",
+                  backgroundPosition = "center") %>%
+      formatStyle("open_cases",
+                  color = styleInterval(c(5, 15), c("#059669", "#ea580c", "#dc2626")),
+                  fontWeight = "bold")
   })
-  
-  # ----------------------------
-  # Category Trend outputs
-  # ----------------------------
-  output$category_trend_table <- renderDT({
-    df <- category_trends()
-    datatable(df, rownames = FALSE, options = list(pageLength = 25, autoWidth = TRUE))
-  })
-  
+
+  # ===========================
+  # Category Trends (Redesigned)
+  # ===========================
   output$category_trend_chart <- renderPlotly({
     df <- category_trends()
     if (nrow(df) == 0) return(plotly_empty())
-    
-    # Top 5 categories overall
-    top5 <- df |>
-      dplyr::group_by(category_name) |>
-      dplyr::summarise(total = sum(cases), .groups = "drop") |>
-      dplyr::arrange(dplyr::desc(total)) |>
+
+    top5 <- df %>%
+      dplyr::group_by(category_name) %>%
+      dplyr::summarise(total = sum(cases), .groups = "drop") %>%
+      dplyr::arrange(dplyr::desc(total)) %>%
       dplyr::slice_head(n = 5)
-    
-    df2 <- df |>
-      dplyr::inner_join(top5, by = "category_name") |>
+
+    df2 <- df %>%
+      dplyr::inner_join(top5, by = "category_name") %>%
       dplyr::arrange(ym)
-    
-    plot_ly(
-      df2,
-      x = ~ym,
-      y = ~cases,
-      color = ~category_name,
-      type = "scatter",
-      mode = "lines+markers"
-    ) %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Cases"))
+
+    cat_colors <- c("#1e3a8a", "#dc2626", "#059669", "#ea580c", "#7c3aed")
+
+    p <- plot_ly()
+    for (i in seq_len(nrow(top5))) {
+      cat_name <- top5$category_name[i]
+      cat_df <- df2[df2$category_name == cat_name, ]
+      p <- p %>% add_trace(data = cat_df, x = ~ym, y = ~cases, type = "scatter",
+                           mode = "lines+markers", name = cat_name,
+                           line = list(color = cat_colors[i], width = 2.5),
+                           marker = list(color = cat_colors[i], size = 6))
+    }
+
+    p %>% layout(
+      font = plotly_font,
+      paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+      margin = list(l = 50, r = 20, t = 10, b = 40),
+      xaxis = list(title = "", gridcolor = "#f1f5f9", tickangle = -45),
+      yaxis = list(title = "Cases", gridcolor = "#f1f5f9"),
+      legend = list(orientation = "h", x = 0, y = 1.12),
+      hovermode = "x unified"
+    )
   })
-  
+
   output$category_movement_table <- renderDT({
     df <- category_trends()
     if (nrow(df) == 0) return(datatable(data.frame()))
-    
-    # Compare latest month to previous month
-    months <- sort(unique(df$ym))
-    if (length(months) < 2) return(datatable(data.frame()))
-    
-    m1 <- months[length(months)]      # latest
-    m0 <- months[length(months) - 1]  # previous
-    
+
+    months_list <- sort(unique(df$ym))
+    if (length(months_list) < 2) return(datatable(data.frame()))
+
+    m1 <- months_list[length(months_list)]
+    m0 <- months_list[length(months_list) - 1]
+
     cur <- df[df$ym == m1, c("category_name", "cases")]
     prev <- df[df$ym == m0, c("category_name", "cases")]
-    names(cur)[2] <- "cases_current"
-    names(prev)[2] <- "cases_prev"
-    
-    movement <- dplyr::full_join(cur, prev, by = "category_name") |>
+    names(cur)[2] <- "Current"
+    names(prev)[2] <- "Previous"
+
+    movement <- dplyr::full_join(cur, prev, by = "category_name") %>%
       dplyr::mutate(
-        cases_current = dplyr::coalesce(cases_current, 0L),
-        cases_prev    = dplyr::coalesce(cases_prev, 0L),
-        change        = cases_current - cases_prev,
-        pct_change    = dplyr::if_else(cases_prev > 0, round((change / cases_prev) * 100, 1), NA_real_)
-      ) |>
-      dplyr::arrange(dplyr::desc(change)) |>
+        Current  = dplyr::coalesce(Current, 0L),
+        Previous = dplyr::coalesce(Previous, 0L),
+        Change   = Current - Previous,
+        `% Change` = dplyr::if_else(Previous > 0, round((Change / Previous) * 100, 1), NA_real_)
+      ) %>%
+      dplyr::arrange(dplyr::desc(Change)) %>%
       dplyr::slice_head(n = 10)
-    
-    datatable(movement, rownames = FALSE, options = list(dom = "t", autoWidth = TRUE))
+
+    names(movement)[1] <- "Category"
+
+    datatable(movement, rownames = FALSE,
+              options = list(dom = "t", autoWidth = TRUE, pageLength = 10)) %>%
+      formatStyle("Change",
+                  color = styleInterval(c(-0.5, 0.5), c("#dc2626", "#64748b", "#059669")),
+                  fontWeight = "bold")
   })
-  
-  # ----------------------------
-  # SLA outputs
-  # ----------------------------
+
+  output$category_trend_table <- renderDT({
+    df <- category_trends()
+    datatable(df, rownames = FALSE,
+              colnames = c("Month", "Category", "Cases"),
+              options = list(pageLength = 25, autoWidth = TRUE, dom = "ftip"))
+  })
+
+  # ===========================
+  # SLA Monitoring (Redesigned - Donut instead of Pie)
+  # ===========================
   output$sla_overview_chart <- renderPlotly({
     s <- sla_data()$summary
     if (nrow(s) == 0) return(plotly_empty())
-    
+
     df <- data.frame(
-      bucket = c("On track", "Due soon (4h)", "Overdue"),
-      count  = c(s$on_track[1], s$due_soon[1], s$overdue[1])
+      bucket = c("On Track", "Due Soon", "Overdue"),
+      count  = c(
+        ifelse(is.na(s$on_track[1]), 0, s$on_track[1]),
+        ifelse(is.na(s$due_soon[1]), 0, s$due_soon[1]),
+        ifelse(is.na(s$overdue[1]), 0, s$overdue[1])
+      )
     )
-    
-    plot_ly(df, labels = ~bucket, values = ~count, type = "pie") %>%
-      layout(showlegend = TRUE)
+
+    sla_colors <- c("#059669", "#f59e0b", "#dc2626")
+    total <- sum(df$count)
+
+    plot_ly(df, labels = ~bucket, values = ~count, type = "pie",
+            hole = 0.6, textinfo = "label+value", textposition = "outside",
+            marker = list(colors = sla_colors, line = list(color = "#ffffff", width = 2)),
+            hoverinfo = "label+value+percent") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent",
+        margin = list(l = 10, r = 10, t = 10, b = 10),
+        showlegend = FALSE,
+        annotations = list(
+          list(text = paste0("<b>", total, "</b><br>Open"),
+               font = list(size = 18, family = "system-ui, sans-serif", color = "#0f172a"),
+               showarrow = FALSE, x = 0.5, y = 0.5)
+        )
+      )
   })
-  
+
   output$sla_region_chart <- renderPlotly({
     df <- sla_data()$by_region
     if (nrow(df) == 0) return(plotly_empty())
-    
-    # stacked bars: on_track, due_soon, overdue
-    plot_ly(df, x = ~region_name, y = ~on_track, type = "bar", name = "On track") %>%
-      add_trace(y = ~due_soon, name = "Due soon") %>%
-      add_trace(y = ~overdue, name = "Overdue") %>%
-      layout(barmode = "stack", xaxis = list(title = ""), yaxis = list(title = "Open cases"))
+
+    plot_ly(df, x = ~region_name, y = ~on_track, type = "bar",
+            name = "On Track", marker = list(color = "#059669")) %>%
+      add_trace(y = ~due_soon, name = "Due Soon", marker = list(color = "#f59e0b")) %>%
+      add_trace(y = ~overdue, name = "Overdue", marker = list(color = "#dc2626")) %>%
+      layout(
+        barmode = "stack",
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 50, r = 20, t = 10, b = 80),
+        xaxis = list(title = "", tickangle = -45, gridcolor = "#f1f5f9"),
+        yaxis = list(title = "Cases", gridcolor = "#f1f5f9"),
+        legend = list(orientation = "h", x = 0, y = 1.12)
+      )
   })
-  
+
+  output$sla_overdue_count <- renderText({
+    df <- sla_data()$overdue
+    nrow(df)
+  })
+
   output$sla_overdue_table <- renderDT({
     df <- sla_data()$overdue
-    datatable(df, rownames = FALSE, options = list(pageLength = 25, autoWidth = TRUE))
+    datatable(df, rownames = FALSE,
+              colnames = c("ID", "Case Code", "Priority", "Status", "Created", "Due At", "Hours Overdue"),
+              options = list(pageLength = 20, autoWidth = TRUE, dom = "ftip",
+                             order = list(list(6, "desc")))) %>%
+      formatStyle("hours_overdue",
+                  color = styleInterval(c(12, 48), c("#ea580c", "#dc2626", "#7f1d1d")),
+                  fontWeight = "bold") %>%
+      formatStyle("priority",
+                  color = styleEqual(c("Urgent", "High", "Medium", "Low"),
+                                     c("#7c2d12", "#dc2626", "#ea580c", "#16a085")),
+                  fontWeight = "bold")
   })
-  
-  # ----------------------------
-  # Time series outputs
-  # ----------------------------
+
+  # ===========================
+  # Time Series (Redesigned)
+  # ===========================
   output$monthly_created_resolved_chart <- renderPlotly({
     df <- monthly_series()
     if (nrow(df) == 0) return(plotly_empty())
-    
-    plot_ly(df, x = ~ym, y = ~created, type = "scatter", mode = "lines+markers", name = "Created") %>%
-      add_trace(y = ~resolved, name = "Resolved") %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Cases"))
+
+    # Add area fill for visual richness
+    plot_ly(df, x = ~ym) %>%
+      add_trace(y = ~created, type = "scatter", mode = "lines+markers",
+                name = "Created",
+                line = list(color = "#3b82f6", width = 2.5),
+                marker = list(color = "#3b82f6", size = 6),
+                fill = "tozeroy", fillcolor = "rgba(59, 130, 246, 0.08)") %>%
+      add_trace(y = ~resolved, type = "scatter", mode = "lines+markers",
+                name = "Resolved",
+                line = list(color = "#059669", width = 2.5),
+                marker = list(color = "#059669", size = 6),
+                fill = "tozeroy", fillcolor = "rgba(5, 150, 105, 0.08)") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 50, r = 20, t = 10, b = 50),
+        xaxis = list(title = "", gridcolor = "#f1f5f9", tickangle = -45),
+        yaxis = list(title = "Cases", gridcolor = "#f1f5f9"),
+        legend = list(orientation = "h", x = 0, y = 1.12),
+        hovermode = "x unified"
+      )
   })
-  
+
   output$monthly_avg_resolution_chart <- renderPlotly({
     df <- monthly_series()
     if (nrow(df) == 0) return(plotly_empty())
-    
-    plot_ly(df, x = ~ym, y = ~avg_resolution_hours, type = "bar") %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Avg resolution (hours)"))
+
+    # Color bars by value (green = fast, red = slow)
+    colors <- ifelse(df$avg_resolution_hours <= 24, "#059669",
+                     ifelse(df$avg_resolution_hours <= 48, "#f59e0b", "#dc2626"))
+
+    plot_ly(df, x = ~ym, y = ~avg_resolution_hours, type = "bar",
+            marker = list(color = colors, cornerradius = 4),
+            text = ~paste0(avg_resolution_hours, "h"), textposition = "outside",
+            hovertemplate = "<b>%{x}</b><br>Avg: %{y:.1f} hours<extra></extra>") %>%
+      layout(
+        font = plotly_font,
+        paper_bgcolor = "transparent", plot_bgcolor = "transparent",
+        margin = list(l = 50, r = 20, t = 10, b = 50),
+        xaxis = list(title = "", gridcolor = "#f1f5f9", tickangle = -45),
+        yaxis = list(title = "Hours", gridcolor = "#f1f5f9"),
+        bargap = 0.3
+      )
   })
-  
+
   output$monthly_trend_table <- renderDT({
     df <- monthly_series()
-    datatable(df, rownames = FALSE, options = list(pageLength = 24, autoWidth = TRUE))
+    datatable(df, rownames = FALSE,
+              colnames = c("Month", "Created", "Resolved", "Avg Hours"),
+              options = list(pageLength = 24, autoWidth = TRUE, dom = "tip",
+                             order = list(list(0, "desc")))) %>%
+      formatStyle("avg_resolution_hours",
+                  background = styleColorBar(range(0, max(df$avg_resolution_hours, 1, na.rm = TRUE)), "#fef3c7"),
+                  backgroundSize = "98% 80%", backgroundRepeat = "no-repeat",
+                  backgroundPosition = "center")
   })
-  
-  
+
+  # ===========================
+  # Export (updated to use filtered data)
+  # ===========================
   output$export_excel <- downloadHandler(
     filename = function() paste0("helpline_analytics_", Sys.Date(), ".xlsx"),
     content = function(file) {
       wb <- createWorkbook()
-      
+
       addWorksheet(wb, "Regional Performance")
       writeData(wb, "Regional Performance", regional_perf())
-      
+
       addWorksheet(wb, "Category Trends")
       writeData(wb, "Category Trends", category_trends())
-      
+
       addWorksheet(wb, "SLA Summary")
       writeData(wb, "SLA Summary", sla_data()$summary)
       writeData(wb, "SLA Summary", sla_data()$by_region, startRow = 5)
-      
+
       addWorksheet(wb, "SLA Overdue")
       writeData(wb, "SLA Overdue", sla_data()$overdue)
-      
+
       addWorksheet(wb, "Time Series")
       writeData(wb, "Time Series", monthly_series())
-      
+
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
