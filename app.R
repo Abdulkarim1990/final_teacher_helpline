@@ -906,92 +906,64 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_
   })
 }
 
-# Dashboard stats function (from original code)
+# Dashboard stats function - aggregation performed in SQL (not R)
 get_dashboard_stats <- function(con, region_id = NULL) {
-  if (is.null(con)) return(list(
+  empty_result <- list(
     status = data.frame(status = character(), count = integer()),
     priority = data.frame(priority = character(), count = integer()),
     category = data.frame(category_name = character(), count = integer()),
-    averages = data.frame(avg_resolution_hours = numeric(), escalation_rate = numeric())
-  ))
-  
+    averages = data.frame(avg_resolution_hours = 0, escalation_rate = 0)
+  )
+  if (is.null(con)) return(empty_result)
+
   tryCatch({
-    # 1. Single optimized query to DigitalOcean (parameterized)
+    region_filter <- ""
+    params <- list()
     if (!is.null(region_id) && region_id != 0) {
-      main_query <- "
-        SELECT
-          t.status,
-          t.priority,
-          COALESCE(c.category_name, 'Unknown') as category_name,
-          t.created_at,
-          t.resolved_at
-        FROM tickets t
-        LEFT JOIN issue_categories c ON t.category_id = c.category_id
-        WHERE t.region_id = ?
-      "
-      raw_data <- dbGetQuery(con, main_query, params = list(region_id))
-    } else {
-      main_query <- "
-        SELECT
-          t.status,
-          t.priority,
-          COALESCE(c.category_name, 'Unknown') as category_name,
-          t.created_at,
-          t.resolved_at
-        FROM tickets t
-        LEFT JOIN issue_categories c ON t.category_id = c.category_id
-      "
-      raw_data <- dbGetQuery(con, main_query)
+      region_filter <- " WHERE t.region_id = ?"
+      params <- list(region_id)
     }
-    
-    if (nrow(raw_data) == 0) {
-      return(list(
-        status = data.frame(status = character(), count = integer()),
-        priority = data.frame(priority = character(), count = integer()),
-        category = data.frame(category_name = character(), count = integer()),
-        averages = data.frame(avg_resolution_hours = 0, escalation_rate = 0)
-      ))
+
+    # 1. Status counts (aggregated in SQL)
+    status_q <- paste0("SELECT t.status, COUNT(*) as count FROM tickets t", region_filter, " GROUP BY t.status")
+    status_data <- if (length(params) > 0) dbGetQuery(con, status_q, params = params) else dbGetQuery(con, status_q)
+
+    # 2. Priority counts (aggregated in SQL)
+    priority_q <- paste0("SELECT t.priority, COUNT(*) as count FROM tickets t", region_filter, " GROUP BY t.priority")
+    priority_data <- if (length(params) > 0) dbGetQuery(con, priority_q, params = params) else dbGetQuery(con, priority_q)
+
+    # 3. Top 10 categories (aggregated in SQL)
+    cat_filter <- if (nchar(region_filter) > 0) " AND t.region_id = ?" else ""
+    category_q <- paste0(
+      "SELECT COALESCE(c.category_name, 'Unknown') as category_name, COUNT(*) as count ",
+      "FROM tickets t LEFT JOIN issue_categories c ON t.category_id = c.category_id ",
+      "WHERE 1=1", cat_filter,
+      " GROUP BY category_name ORDER BY count DESC LIMIT 10"
+    )
+    category_data <- if (length(params) > 0) dbGetQuery(con, category_q, params = params) else dbGetQuery(con, category_q)
+
+    # 4. Averages (aggregated in SQL)
+    avg_q <- paste0(
+      "SELECT ",
+      "  ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, COALESCE(t.resolved_at, NOW()))), 1) as avg_resolution_hours, ",
+      "  ROUND(SUM(CASE WHEN t.status = 'Escalated' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0) * 100, 1) as escalation_rate ",
+      "FROM tickets t", region_filter
+    )
+    avg_data <- if (length(params) > 0) dbGetQuery(con, avg_q, params = params) else dbGetQuery(con, avg_q)
+    if (nrow(avg_data) == 0 || is.na(avg_data$avg_resolution_hours[1])) {
+      avg_data <- data.frame(avg_resolution_hours = 0, escalation_rate = 0)
     }
-    
-    # 2. Grouping data in R (Fixed: use n() instead of count for specific renaming)
-    status_data <- raw_data %>% group_by(status) %>% summarise(count = n())
-    priority_data <- raw_data %>% group_by(priority) %>% summarise(count = n())
-    category_data <- raw_data %>% 
-      group_by(category_name) %>% 
-      summarise(count = n()) %>%
-      arrange(desc(count)) %>% 
-      head(10)
-    
-    # 3. Calculate Averages (Fixed: replaced COALESCE with ifelse and synchronized time types)
-    avg_data <- raw_data %>%
-      mutate(
-        # Convert created_at to R time format
-        time_created = as.POSIXct(created_at),
-        # If resolved_at is NA, use current time; otherwise use resolved_at
-        time_resolved = as.POSIXct(ifelse(is.na(resolved_at), Sys.time(), resolved_at), origin = "1970-01-01"),
-        # Calculate numeric hours
-        hours = as.numeric(difftime(time_resolved, time_created, units = "hours"))
-      ) %>%
-      summarise(
-        avg_resolution_hours = mean(hours, na.rm = TRUE),
-        escalation_rate = (sum(status == "Escalated", na.rm = TRUE) / n()) * 100
-      )
-    
+
     return(list(
       status = status_data,
-      priority = priority_data, 
+      priority = priority_data,
       category = category_data,
       averages = avg_data
     ))
-    
+
   }, error = function(e) {
     showNotification(paste("Error loading dashboard stats:", e$message), type = "error")
-    return(list(
-      status = data.frame(status = character(), count = integer()),
-      priority = data.frame(priority = character(), count = integer()),
-      category = data.frame(category_name = character(), count = integer()),
-      averages = data.frame(avg_resolution_hours = 0, escalation_rate = 0)
-    ))
+    return(empty_result)
   })
 }
 
@@ -2887,7 +2859,9 @@ server <- function(input, output, session) {
   # ========================================
   
   
+  # Keepalive: only send when user is logged in to avoid idle resource use
   observe({
+    req(isTRUE(rv$logged_in))
     invalidateLater(25000, session)  # every 25 seconds
     session$sendCustomMessage("keepalive", list(t = as.character(Sys.time())))
   })
@@ -2959,13 +2933,35 @@ server <- function(input, output, session) {
   # =============================================================================
   SESSION_TIMEOUT_MINUTES <- 30
   
-  # Update last activity on any user interaction
+  # Update last activity on meaningful user interactions
+  # Instead of reactiveValuesToList(input) which fires on EVERY input change
+  # (extremely expensive with many DT tables, dropdowns, etc.), we track
+  # specific navigation and form submission events.
   observe({
-    # This triggers on any input change
-    reactiveValuesToList(input)
-    if (isTRUE(rv$logged_in)) {
-      rv$last_activity <- Sys.time()
-    }
+    # Track tab navigation
+    input$sidebar_menu
+    input$current_tab
+    input$analytics_tabs
+    # Track button clicks (form submissions, searches, case actions)
+    input$submit_case
+    input$quick_submit_case
+    input$refresh_all_cases
+    input$quick_search_btn
+    input$header_quick_search_btn
+    input$confirm_bulk_status
+    input$confirm_bulk_priority
+    input$bulk_escalate
+    input$view_case_id
+    input$analytics_refresh_btn
+    input$export_excel
+    # Track any page state change
+    rv$page_state
+
+    isolate({
+      if (isTRUE(rv$logged_in)) {
+        rv$last_activity <- Sys.time()
+      }
+    })
   })
   
   # Check for session timeout periodically
@@ -3751,12 +3747,20 @@ server <- function(input, output, session) {
   })
   
   # Auto-refresh: invalidate dashboard data every 5 minutes
-  auto_refresh_timer <- reactiveTimer(300000)  # 300,000 ms = 5 minutes
+  # Only fires when user is logged in AND on the dashboard tab
   dashboard_stats_invalidator <- reactiveVal(0)
-  
+
+  observe({
+    invalidateLater(300000, session)  # 300,000 ms = 5 minutes
+    isolate({
+      if (isTRUE(rv$logged_in) && !is.null(input$sidebar_menu) && input$sidebar_menu == "dashboard") {
+        dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
+      }
+    })
+  })
+
   # Dashboard KPIs (auto-refreshing) - filtered by user's region
   dashboard_stats <- reactive({
-    auto_refresh_timer()
     dashboard_stats_invalidator()
     forced_region <- user_region_id()
     get_dashboard_stats(con(), region_id = forced_region)
@@ -3859,7 +3863,7 @@ server <- function(input, output, session) {
   })
   
   output$auto_refresh_status <- renderText({
-    auto_refresh_timer()
+    dashboard_stats_invalidator()
     paste("Auto-refreshes every 5 min | Last:", format(Sys.time(), "%H:%M:%S"))
   })
   
@@ -4215,7 +4219,7 @@ server <- function(input, output, session) {
     
     fetch_tickets(con(), region_id = region_filter, status_filter = status_val,
                   category_id = cat_val, search_text = search_val,
-                  date_from = date_from_val, date_to = date_to_val)
+                  date_from = date_from_val, date_to = date_to_val, limit = 1000)
   })
   
   # Clear All Filters handler
@@ -4321,10 +4325,10 @@ server <- function(input, output, session) {
   output$all_cases_table <- DT::renderDataTable({
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-    
+
     # Ensure entry_mode column exists (backwards compatibility)
     if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
-    
+
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status, entry_mode) %>%
       mutate(
@@ -4342,18 +4346,19 @@ server <- function(input, output, session) {
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id, -entry_mode)
-    
+
     DT::datatable(display_data,
                   options = list(
                     pageLength = 20,
                     scrollX = TRUE,
-                    order = list(list(1, 'desc'))
+                    order = list(list(1, 'desc')),
+                    processing = TRUE
                   ),
                   escape = FALSE,
                   rownames = FALSE,
                   colnames = c("Case", "Created", "Teacher", "School", "District", "Category", "Priority", "Status")
     )
-  })
+  }, server = TRUE)
   
   # Quick Case Lookup from sidebar
   observeEvent(input$quick_search_btn, {
@@ -5832,7 +5837,7 @@ server <- function(input, output, session) {
               escape = FALSE, rownames = FALSE,
               selection = 'single',
               colnames = c("Case", "Escalated At", "Teacher", "Region", "Category", "Priority", "Time Since", "Summary"))
-  })
+  }, server = TRUE)
   
   # Update region filter choices for escalated cases
   observe({
@@ -6420,22 +6425,55 @@ server <- function(input, output, session) {
     }
   })
   
-  # Confirm bulk status update
+  # Confirm bulk status update (batched single-transaction)
   observeEvent(input$confirm_bulk_status, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-    
+
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-    
-    success_count <- 0
-    for (tid in ticket_ids) {
-      tryCatch({
-        update_case_status(con(), tid, input$bulk_new_status, input$bulk_status_notes, current_user_id())
-        success_count <- success_count + 1
-      }, error = function(e) {})
-    }
-    
+    new_status <- input$bulk_new_status
+    notes <- input$bulk_status_notes
+    uid <- current_user_id()
+
+    success_count <- tryCatch({
+      poolWithTransaction(con(), function(conn) {
+        # Build batch UPDATE with conditional timestamps
+        placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
+        timestamp_clause <- switch(new_status,
+          "Resolved" = ", resolved_at = IFNULL(resolved_at, NOW())",
+          "Closed"   = ", closed_at = IFNULL(closed_at, NOW())",
+          ""
+        )
+        batch_q <- paste0(
+          "UPDATE tickets SET status = ?, updated_at = NOW()", timestamp_clause,
+          " WHERE ticket_id IN (", placeholders, ")"
+        )
+        params <- c(list(new_status), as.list(as.integer(ticket_ids)))
+        rows <- dbExecute(conn, batch_q, params = params)
+
+        # Batch insert action log entries
+        if (rows > 0) {
+          action_text <- if (!is.null(notes) && notes != "" && !is.na(notes)) {
+            paste("Bulk status changed to", new_status, "-", notes)
+          } else {
+            paste("Bulk status changed to", new_status)
+          }
+          values_sql <- paste(rep("(?, ?, 'status_change', ?, NULL, ?)", length(ticket_ids)), collapse = ",")
+          log_q <- paste0(
+            "INSERT INTO ticket_actions (ticket_id, action_by_user_id, action_type, action_text, old_status, new_status) VALUES ",
+            values_sql
+          )
+          log_params <- unlist(lapply(ticket_ids, function(tid) list(as.integer(tid), uid, action_text, new_status)), recursive = FALSE)
+          dbExecute(conn, log_q, params = log_params)
+        }
+        rows
+      })
+    }, error = function(e) {
+      showNotification(paste("Bulk update error:", e$message), type = "error")
+      0L
+    })
+
     runjs("$('#bulkStatusModal').modal('hide');")
     showNotification(paste("Updated", success_count, "of", length(ticket_ids), "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
@@ -6448,46 +6486,63 @@ server <- function(input, output, session) {
     }
   })
   
-  # Confirm bulk priority change
+  # Confirm bulk priority change (batched single query)
   observeEvent(input$confirm_bulk_priority, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-    
+
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-    
-    success_count <- 0
-    for (tid in ticket_ids) {
-      tryCatch({
-        dbExecute(con(), "UPDATE tickets SET priority = ? WHERE ticket_id = ?",
-                  params = list(input$bulk_new_priority, tid))
-        success_count <- success_count + 1
-      }, error = function(e) {})
-    }
-    
+
+    success_count <- tryCatch({
+      placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
+      batch_q <- paste0("UPDATE tickets SET priority = ?, updated_at = NOW() WHERE ticket_id IN (", placeholders, ")")
+      params <- c(list(input$bulk_new_priority), as.list(as.integer(ticket_ids)))
+      dbExecute(con(), batch_q, params = params)
+    }, error = function(e) {
+      showNotification(paste("Bulk priority error:", e$message), type = "error")
+      0L
+    })
+
     runjs("$('#bulkPriorityModal').modal('hide');")
     showNotification(paste("Updated priority for", success_count, "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
   })
   
-  # Bulk escalate all
+  # Bulk escalate all (batched single transaction)
   observeEvent(input$bulk_escalate, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-    
+
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-    
-    success_count <- 0
-    for (tid in ticket_ids) {
-      tryCatch({
-        dbExecute(con(), "UPDATE tickets SET status = 'Escalated', escalated_at = NOW() WHERE ticket_id = ?",
-                  params = list(tid))
-        add_case_note(con(), tid, "Bulk escalated for national review", current_user_id())
-        success_count <- success_count + 1
-      }, error = function(e) {})
-    }
-    
+    uid <- current_user_id()
+
+    success_count <- tryCatch({
+      poolWithTransaction(con(), function(conn) {
+        placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
+
+        # Batch update status
+        batch_q <- paste0("UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), updated_at = NOW() WHERE ticket_id IN (", placeholders, ")")
+        rows <- dbExecute(conn, batch_q, params = as.list(as.integer(ticket_ids)))
+
+        # Batch insert action log
+        if (rows > 0) {
+          values_sql <- paste(rep("(?, ?, 'note', 'Bulk escalated for national review')", length(ticket_ids)), collapse = ",")
+          log_q <- paste0(
+            "INSERT INTO ticket_actions (ticket_id, action_by_user_id, action_type, action_text) VALUES ",
+            values_sql
+          )
+          log_params <- unlist(lapply(ticket_ids, function(tid) list(as.integer(tid), uid)), recursive = FALSE)
+          dbExecute(conn, log_q, params = log_params)
+        }
+        rows
+      })
+    }, error = function(e) {
+      showNotification(paste("Bulk escalation error:", e$message), type = "error")
+      0L
+    })
+
     showNotification(paste("Escalated", success_count, "cases"), type = "warning")
     shinyjs::click("refresh_all_cases")
   })
