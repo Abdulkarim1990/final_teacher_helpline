@@ -353,10 +353,11 @@ get_sla_overview <- function(con, region_id = NULL) {
     ORDER BY hours_overdue DESC
     LIMIT 200")
 
+  has_region <- length(params_s) > 0
   list(
-    summary  = dbGetQuery(con, summary_q, params = params_s),
-    by_region = dbGetQuery(con, by_region_q, params = params_r),
-    overdue  = dbGetQuery(con, overdue_q, params = params_o)
+    summary  = if (has_region) dbGetQuery(con, summary_q, params = params_s) else dbGetQuery(con, summary_q),
+    by_region = if (has_region) dbGetQuery(con, by_region_q, params = params_r) else dbGetQuery(con, by_region_q),
+    overdue  = if (has_region) dbGetQuery(con, overdue_q, params = params_o) else dbGetQuery(con, overdue_q)
   )
 }
 
