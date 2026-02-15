@@ -778,6 +778,31 @@ add_case_note <- function(pool_conn, ticket_id, note_text, user_id = NULL) {
   })
 }
 
+# Validate Ghana phone number format
+# Accepts: +233XXXXXXXXX (13 chars), 233XXXXXXXXX (12 chars), 0XXXXXXXXX (10 chars)
+# Returns list(valid = TRUE/FALSE, msg = "error message", normalized = "+233...")
+validate_ghana_phone <- function(phone) {
+  if (is.null(phone) || trimws(phone) == "") {
+    return(list(valid = FALSE, msg = "Contact number is required.", normalized = ""))
+  }
+
+  cleaned <- gsub("[\\s\\-().]", "", trimws(phone))
+
+  # Match Ghana phone patterns
+  if (grepl("^\\+233[0-9]{9}$", cleaned)) {
+    # Already in +233 format
+    return(list(valid = TRUE, msg = "", normalized = cleaned))
+  } else if (grepl("^233[0-9]{9}$", cleaned)) {
+    # Missing the +
+    return(list(valid = TRUE, msg = "", normalized = paste0("+", cleaned)))
+  } else if (grepl("^0[0-9]{9}$", cleaned)) {
+    # Local format 0XXXXXXXXX -> +233XXXXXXXXX
+    return(list(valid = TRUE, msg = "", normalized = paste0("+233", substring(cleaned, 2))))
+  } else {
+    return(list(valid = FALSE, msg = "Invalid phone number. Use +233XXXXXXXXX or 0XXXXXXXXX (10 digits).", normalized = ""))
+  }
+}
+
 # Insert ticket function (from original code)
 # Supports both full and quick entry modes
 insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
@@ -2031,6 +2056,54 @@ ui <- tagList(
               /* END ANALYTICS DASHBOARD REDESIGN             */
               /* ============================================ */
 
+              /* Phone validation feedback */
+              .phone-hint {
+                font-size: 11px;
+                color: #6b7280;
+                margin-top: 2px;
+              }
+              .phone-hint.invalid {
+                color: #dc2626;
+              }
+              .phone-hint.valid {
+                color: #059669;
+              }
+
+            ")),
+            tags$script(HTML("
+              $(document).on('shiny:connected', function() {
+                // Set phone inputs to type=tel for mobile keyboards
+                $('#teacher_phone, #quick_teacher_phone').attr({
+                  'type': 'tel',
+                  'maxlength': '15',
+                  'autocomplete': 'tel'
+                });
+
+                // Live phone format feedback
+                function checkPhone(val) {
+                  var cleaned = val.replace(/[\\s\\-().]/g, '');
+                  if (cleaned === '') return {cls: '', msg: ''};
+                  var ok = /^(\\+233[0-9]{9}|233[0-9]{9}|0[0-9]{9})$/.test(cleaned);
+                  if (ok) return {cls: 'valid', msg: 'Valid Ghana number'};
+                  if (cleaned.length < 10) return {cls: '', msg: 'Format: +233XXXXXXXXX or 0XXXXXXXXX'};
+                  return {cls: 'invalid', msg: 'Invalid format. Use +233XXXXXXXXX or 0XXXXXXXXX'};
+                }
+
+                function addHint(inputId) {
+                  var $input = $('#' + inputId);
+                  if ($input.length === 0) return;
+                  var hintId = inputId + '_hint';
+                  if ($('#' + hintId).length === 0) {
+                    $input.after('<div id=\"' + hintId + '\" class=\"phone-hint\"></div>');
+                  }
+                  $input.on('input', function() {
+                    var result = checkPhone($(this).val());
+                    $('#' + hintId).attr('class', 'phone-hint ' + result.cls).text(result.msg);
+                  });
+                }
+                addHint('teacher_phone');
+                addHint('quick_teacher_phone');
+              });
             "))
             ),
             
@@ -3928,19 +4001,26 @@ server <- function(input, output, session) {
       showNotification("Case summary must be at least 20 characters", type = "warning")
       return()
     }
-    
+
+    # Validate and normalize phone number
+    phone_result <- validate_ghana_phone(input$teacher_phone)
+    if (!phone_result$valid) {
+      showNotification(phone_result$msg, type = "warning")
+      return()
+    }
+
     sub_id <- if (!is.null(input$subcategory_id) && input$subcategory_id != "") {
       input$subcategory_id
     } else {
       NULL
     }
-    
+
     success <- insert_ticket(
       con = con(),
       region_id = input$region_select %or% 1,
       channel_id = input$channel %or% 1,
       teacher_name = input$teacher_name,
-      teacher_phone = input$teacher_phone,
+      teacher_phone = phone_result$normalized,
       teacher_staff_id = input$teacher_staff_id,
       school_name = input$school_name,
       district = input$district,
@@ -4044,18 +4124,29 @@ server <- function(input, output, session) {
       paste0("[Quick] ", cat_name, " - ", outcome)
     }
     
+    # Validate phone if provided (optional for quick entry)
+    quick_phone <- trimws(input$quick_teacher_phone %or% "")
+    if (nchar(quick_phone) > 0) {
+      phone_result <- validate_ghana_phone(quick_phone)
+      if (!phone_result$valid) {
+        showNotification(phone_result$msg, type = "warning")
+        return()
+      }
+      quick_phone <- phone_result$normalized
+    }
+
     sub_id <- if (!is.null(input$quick_subcategory_id) && input$quick_subcategory_id != "") {
       as.integer(input$quick_subcategory_id)
     } else {
       NULL
     }
-    
+
     success <- insert_ticket(
       con = con(),
       region_id = input$quick_region %or% 1,
       channel_id = input$quick_channel %or% 1,
       teacher_name = input$quick_teacher_name,
-      teacher_phone = input$quick_teacher_phone,
+      teacher_phone = quick_phone,
       teacher_staff_id = NULL,
       school_name = NULL,
       district = NULL,
@@ -4173,9 +4264,13 @@ server <- function(input, output, session) {
     })
   })
   
+  # Debounced search inputs - prevents a DB query on every keystroke (500ms delay)
+  all_search_debounced <- debounce(reactive({ input$all_search_text }), 500)
+
   # Data tables with role-based region access control
   recent_cases_data <- reactive({
     dashboard_stats_invalidator()
+    req(isTRUE(rv$logged_in))
     forced_region <- user_region_id()
     fetch_tickets(con(), region_id = forced_region, limit = 10)
   })
@@ -4205,10 +4300,11 @@ server <- function(input, output, session) {
     } else {
       input$all_category_filter
     }
-    search_val <- if(is.null(input$all_search_text) || input$all_search_text == "") {
+    search_text <- all_search_debounced()
+    search_val <- if(is.null(search_text) || search_text == "") {
       NULL
     } else {
-      input$all_search_text
+      search_text
     }
     date_from_val <- if(is.null(input$all_date_from) || is.na(input$all_date_from)) NULL else input$all_date_from
     date_to_val <- if(is.null(input$all_date_to) || is.na(input$all_date_to)) NULL else input$all_date_to
@@ -4219,7 +4315,7 @@ server <- function(input, output, session) {
     
     fetch_tickets(con(), region_id = region_filter, status_filter = status_val,
                   category_id = cat_val, search_text = search_val,
-                  date_from = date_from_val, date_to = date_to_val, limit = 1000)
+                  date_from = date_from_val, date_to = date_to_val, limit = 500)
   })
   
   # Clear All Filters handler
@@ -4314,14 +4410,15 @@ server <- function(input, output, session) {
                   options = list(
                     pageLength = 15,
                     scrollX = TRUE,
-                    order = list(list(1, 'desc'))
+                    order = list(list(1, 'desc')),
+                    processing = TRUE
                   ),
                   escape = FALSE,
                   rownames = FALSE,
                   colnames = c("Case", "Created", "Teacher", "School", "Category", "Priority", "Status", "Age")
     )
-  })
-  
+  }, server = TRUE)
+
   output$all_cases_table <- DT::renderDataTable({
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
@@ -6051,7 +6148,7 @@ server <- function(input, output, session) {
               options = list(pageLength = 15, scrollX = TRUE, columnDefs = list(list(width = '100px', targets = 6))),
               escape = FALSE, rownames = FALSE,
               colnames = c("Case", "Teacher", "Region", "Follow-up Date", "Status", "Notes", "Actions"))
-  })
+  }, server = TRUE)
   
   # Export follow-ups to Excel
   output$export_followups <- downloadHandler(
