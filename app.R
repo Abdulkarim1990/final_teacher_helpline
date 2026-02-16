@@ -2916,8 +2916,83 @@ ui <- tagList(
         
         
         tags$script(HTML("
-  Shiny.addCustomMessageHandler('keepalive', function(x) {
-    // do nothing, just keep the connection alive
+  // =====================================================================
+  // ROBUST KEEP-ALIVE SYSTEM
+  // Uses a Web Worker so pings are NOT throttled when the tab is in the
+  // background (regular setInterval IS throttled by modern browsers).
+  // Also auto-reconnects if the Shiny WebSocket drops.
+  // =====================================================================
+
+  // --- 1. Server keep-alive message handler (no-op, keeps WS alive) ---
+  Shiny.addCustomMessageHandler('keepalive', function(x) {});
+
+  // --- 2. Web Worker for background-safe interval timer ---
+  // Browsers throttle setTimeout/setInterval in background tabs to at most
+  // once per minute (Chrome) or freeze them entirely. Web Workers run on
+  // a separate thread and are NOT subject to this throttling.
+  var workerBlob = new Blob([
+    'var interval; onmessage = function(e) {' +
+    '  if (e.data === \"start\") { clearInterval(interval); interval = setInterval(function(){ postMessage(\"tick\"); }, 15000); }' +
+    '  if (e.data === \"stop\")  { clearInterval(interval); }' +
+    '};'
+  ], { type: 'application/javascript' });
+  var keepAliveWorker = new Worker(URL.createObjectURL(workerBlob));
+
+  // Every tick from the worker, send a lightweight input value to the server
+  // so Shiny knows the client is still alive.
+  keepAliveWorker.onmessage = function(e) {
+    if (e.data === 'tick' && Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket &&
+        Shiny.shinyapp.$socket.readyState === WebSocket.OPEN) {
+      Shiny.setInputValue('client_keepalive_ping', new Date().getTime(), {priority: 'event'});
+    }
+  };
+  keepAliveWorker.postMessage('start');
+
+  // --- 3. Visibility-change handler ---
+  // When the user returns to the tab, immediately check the connection and
+  // send a ping. If the socket is closed, trigger a reconnect.
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+      if (Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket) {
+        var sock = Shiny.shinyapp.$socket;
+        if (sock.readyState === WebSocket.OPEN) {
+          Shiny.setInputValue('client_keepalive_ping', new Date().getTime(), {priority: 'event'});
+        } else if (sock.readyState === WebSocket.CLOSED || sock.readyState === WebSocket.CLOSING) {
+          // Socket is dead — try to reconnect
+          if (Shiny.shinyapp.reconnect) {
+            Shiny.shinyapp.reconnect();
+          } else {
+            window.location.reload();
+          }
+        }
+      }
+    }
+  });
+
+  // --- 4. Auto-reconnect on disconnect ---
+  $(document).on('shiny:disconnected', function(event) {
+    // Wait a moment then attempt to reconnect
+    setTimeout(function() {
+      if (Shiny.shinyapp && Shiny.shinyapp.reconnect) {
+        Shiny.shinyapp.reconnect();
+      } else {
+        // Fallback: reload the page
+        window.location.reload();
+      }
+    }, 3000);
+  });
+
+  // --- 5. Prevent the grey overlay from blocking the UI on disconnect ---
+  // Shiny shows #shiny-disconnected-overlay when the WS drops. Hide it
+  // while we attempt reconnection so the user is not stuck.
+  var disconnectObserver = new MutationObserver(function(mutations) {
+    var overlay = document.getElementById('shiny-disconnected-overlay');
+    if (overlay && overlay.style.display !== 'none') {
+      overlay.style.display = 'none';
+    }
+  });
+  $(document).on('shiny:connected', function() {
+    disconnectObserver.observe(document.body, { childList: true, subtree: true });
   });
 "))
     ) # end div#main_app
@@ -2932,11 +3007,20 @@ server <- function(input, output, session) {
   # ========================================
   
   
-  # Keepalive: only send when user is logged in to avoid idle resource use
+  # Keepalive: server-to-client ping every 20 seconds (keeps the WebSocket alive
+  # from the server side). Runs regardless of login state so the session itself
+  # stays connected — the session-timeout observer handles idle logout separately.
   observe({
-    req(isTRUE(rv$logged_in))
-    invalidateLater(25000, session)  # every 25 seconds
+    invalidateLater(20000, session)  # every 20 seconds
     session$sendCustomMessage("keepalive", list(t = as.character(Sys.time())))
+  })
+
+  # Receive client-to-server pings from the Web Worker keep-alive.
+  # This is a no-op observer — simply receiving the input value is enough to
+  # prove the connection is alive. We use observeEvent so it doesn't trigger
+  # on NULL / missing values.
+  observeEvent(input$client_keepalive_ping, {
+    # nothing needed — the round-trip itself keeps the connection open
   })
   
   
