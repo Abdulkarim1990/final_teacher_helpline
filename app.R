@@ -239,7 +239,7 @@ con <- function() {
 # Database helper functions
 get_regional_performance <- function(con, months_back = 12, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-
+  
   q <- "
     SELECT r.region_name,
            COUNT(*) as total_cases,
@@ -266,7 +266,7 @@ get_regional_performance <- function(con, months_back = 12, region_id = NULL) {
 
 get_category_trends <- function(con, months_back = 12, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-
+  
   q <- "
     SELECT DATE_FORMAT(t.created_at, '%Y-%m') as ym,
            COALESCE(c.category_name,'Unknown') as category_name,
@@ -286,7 +286,7 @@ get_category_trends <- function(con, months_back = 12, region_id = NULL) {
 
 get_time_series <- function(con, months_back = 18, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-
+  
   q <- "
     SELECT DATE_FORMAT(created_at, '%Y-%m') as ym,
            COUNT(*) as created,
@@ -308,7 +308,7 @@ get_time_series <- function(con, months_back = 18, region_id = NULL) {
 
 get_sla_overview <- function(con, region_id = NULL) {
   if (is.null(con)) return(list(summary=data.frame(), by_region=data.frame(), overdue=data.frame()))
-
+  
   region_filter <- ""
   region_filter_t <- ""
   params_s <- list()
@@ -321,7 +321,7 @@ get_sla_overview <- function(con, region_id = NULL) {
     params_r <- list(as.integer(region_id))
     params_o <- list(as.integer(region_id))
   }
-
+  
   summary_q <- paste0("
     SELECT
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
@@ -330,7 +330,7 @@ get_sla_overview <- function(con, region_id = NULL) {
       SUM(CASE WHEN status NOT IN ('Resolved','Closed') AND (resolution_due_at IS NULL OR resolution_due_at > DATE_ADD(NOW(), INTERVAL 4 HOUR)) THEN 1 ELSE 0 END) as on_track
     FROM tickets
     WHERE 1=1", region_filter)
-
+  
   by_region_q <- paste0("
     SELECT r.region_name,
       SUM(CASE WHEN t.status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
@@ -342,7 +342,7 @@ get_sla_overview <- function(con, region_id = NULL) {
     WHERE 1=1", region_filter_t, "
     GROUP BY r.region_name
     ORDER BY overdue DESC, due_soon DESC, open_cases DESC")
-
+  
   overdue_q <- paste0("
     SELECT ticket_id, case_code, priority, status, created_at, resolution_due_at,
            TIMESTAMPDIFF(HOUR, resolution_due_at, NOW()) as hours_overdue
@@ -352,98 +352,69 @@ get_sla_overview <- function(con, region_id = NULL) {
       AND resolution_due_at < NOW()", region_filter, "
     ORDER BY hours_overdue DESC
     LIMIT 200")
-
+  
   has_region <- length(params_s) > 0
-
-  # Fetch by_region data and derive summary from it (2 queries instead of 3)
-  by_region <- if (has_region) dbGetQuery(con, by_region_q, params = params_r) else dbGetQuery(con, by_region_q)
-
-  # Derive summary by summing the by_region rows
-  if (nrow(by_region) > 0) {
-    summary_data <- data.frame(
-      open_cases = sum(by_region$open_cases, na.rm = TRUE),
-      overdue = sum(by_region$overdue, na.rm = TRUE),
-      due_soon = sum(by_region$due_soon, na.rm = TRUE),
-      on_track = sum(by_region$on_track, na.rm = TRUE)
-    )
-  } else {
-    summary_data <- data.frame(open_cases = 0, overdue = 0, due_soon = 0, on_track = 0)
-  }
-
-  overdue_data <- if (has_region) dbGetQuery(con, overdue_q, params = params_o) else dbGetQuery(con, overdue_q)
-
-  list(summary = summary_data, by_region = by_region, overdue = overdue_data)
+  list(
+    summary  = if (has_region) dbGetQuery(con, summary_q, params = params_s) else dbGetQuery(con, summary_q),
+    by_region = if (has_region) dbGetQuery(con, by_region_q, params = params_r) else dbGetQuery(con, by_region_q),
+    overdue  = if (has_region) dbGetQuery(con, overdue_q, params = params_o) else dbGetQuery(con, overdue_q)
+  )
 }
 
-# Trend comparison: current period vs previous period (single query)
+# Trend comparison: current period vs previous period
 get_analytics_trends <- function(con, months_back = 3, region_id = NULL) {
   if (is.null(con)) return(list(current = list(), previous = list()))
-
+  
   region_filter <- ""
-  params <- list(months_back, months_back, months_back * 2, months_back)
+  params_cur <- list(months_back)
+  params_prev <- list(months_back, months_back)
   if (!is.null(region_id) && region_id != "" && region_id != "all") {
     region_filter <- " AND region_id = ?"
-    params <- c(params, list(as.integer(region_id)))
+    params_cur <- c(params_cur, list(as.integer(region_id)))
+    params_prev <- c(params_prev, list(as.integer(region_id)))
   }
-
-  # Single query with CASE to split current vs previous period
-  q <- paste0("
-    SELECT
-      SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) THEN 1 ELSE 0 END) as cur_total,
-      SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as cur_resolved,
-      ROUND(AVG(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status IN ('Resolved','Closed')
-                     THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at)) END), 1) as cur_avg_hours,
-      SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status = 'Escalated' THEN 1 ELSE 0 END) as cur_escalated,
-      SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as cur_open,
-      SUM(CASE WHEN created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status = 'New' THEN 1 ELSE 0 END) as cur_new,
-      SUM(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) THEN 1 ELSE 0 END) as prev_total,
-      SUM(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as prev_resolved,
-      ROUND(AVG(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status IN ('Resolved','Closed')
-                     THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at)) END), 1) as prev_avg_hours,
-      SUM(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status = 'Escalated' THEN 1 ELSE 0 END) as prev_escalated,
-      SUM(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as prev_open,
-      SUM(CASE WHEN created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH) AND status = 'New' THEN 1 ELSE 0 END) as prev_new
+  
+  current_q <- paste0("
+    SELECT COUNT(*) as total_cases,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+           SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END) as new_cases
     FROM tickets
     WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)", region_filter)
-
-  # months_back repeated 6x for current, months_back repeated 6x for previous, then months_back*2 for outer WHERE
-  params <- list(
-    months_back, months_back, months_back, months_back, months_back, months_back,
-    months_back, months_back, months_back, months_back, months_back, months_back,
-    months_back * 2
-  )
+  
+  previous_q <- paste0("
+    SELECT COUNT(*) as total_cases,
+           SUM(CASE WHEN status IN ('Resolved','Closed') THEN 1 ELSE 0 END) as resolved_cases,
+           ROUND(AVG(CASE WHEN status IN ('Resolved','Closed')
+                          THEN TIMESTAMPDIFF(HOUR, created_at, COALESCE(resolved_at, closed_at))
+                     END), 1) as avg_resolution_hours,
+           SUM(CASE WHEN status = 'Escalated' THEN 1 ELSE 0 END) as escalated_cases,
+           SUM(CASE WHEN status NOT IN ('Resolved','Closed') THEN 1 ELSE 0 END) as open_cases,
+           SUM(CASE WHEN status = 'New' THEN 1 ELSE 0 END) as new_cases
+    FROM tickets
+    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? MONTH)
+      AND created_at < DATE_SUB(CURDATE(), INTERVAL ? MONTH)", region_filter)
+  
+  # Fix: previous period is (2*months_back) to (months_back) ago
+  params_prev_fixed <- list(months_back * 2, months_back)
   if (!is.null(region_id) && region_id != "" && region_id != "all") {
-    params <- c(params, list(as.integer(region_id)))
+    params_prev_fixed <- c(params_prev_fixed, list(as.integer(region_id)))
   }
-
-  row <- dbGetQuery(con, q, params = params)
-
-  nz <- function(x) ifelse(is.null(x) || length(x) == 0 || is.na(x), 0, x)
-
+  
   list(
-    current = data.frame(
-      total_cases = nz(row$cur_total),
-      resolved_cases = nz(row$cur_resolved),
-      avg_resolution_hours = nz(row$cur_avg_hours),
-      escalated_cases = nz(row$cur_escalated),
-      open_cases = nz(row$cur_open),
-      new_cases = nz(row$cur_new)
-    ),
-    previous = data.frame(
-      total_cases = nz(row$prev_total),
-      resolved_cases = nz(row$prev_resolved),
-      avg_resolution_hours = nz(row$prev_avg_hours),
-      escalated_cases = nz(row$prev_escalated),
-      open_cases = nz(row$prev_open),
-      new_cases = nz(row$prev_new)
-    )
+    current = dbGetQuery(con, current_q, params = params_cur),
+    previous = dbGetQuery(con, previous_q, params = params_prev_fixed)
   )
 }
 
 # Status distribution for summary donut
 get_status_distribution <- function(con, months_back = 3, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-
+  
   q <- "
     SELECT status, COUNT(*) as count
     FROM tickets
@@ -461,7 +432,7 @@ get_status_distribution <- function(con, months_back = 3, region_id = NULL) {
 # Priority distribution for summary
 get_priority_distribution <- function(con, months_back = 3, region_id = NULL) {
   if (is.null(con)) return(data.frame())
-
+  
   q <- "
     SELECT priority, COUNT(*) as count
     FROM tickets
@@ -814,9 +785,9 @@ validate_ghana_phone <- function(phone) {
   if (is.null(phone) || trimws(phone) == "") {
     return(list(valid = FALSE, msg = "Contact number is required.", normalized = ""))
   }
-
+  
   cleaned <- gsub("[^0-9+]", "", trimws(phone))
-
+  
   # Match Ghana phone patterns
   if (grepl("^\\+233[0-9]{9}$", cleaned)) {
     # Already in +233 format
@@ -850,14 +821,14 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
     district <- if (is.null(district) || district == "") "" else district
     description <- if (is.null(description) || description == "") "" else description
     quick_outcome <- if (is.null(quick_outcome) || quick_outcome == "") NA else quick_outcome
-
+    
     # Set resolved_at for quick entries that are immediately resolved
     resolved_at_val <- if (entry_mode == "quick" && status == "Resolved") "NOW()" else "NULL"
-
+    
     # Use a single checked-out connection so LAST_INSERT_ID() works correctly
     db_conn <- poolCheckout(con)
     on.exit(poolReturn(db_conn))
-
+    
     query <- paste0("
       INSERT INTO tickets (
         region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
@@ -865,20 +836,20 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
         entry_mode, quick_outcome, resolved_at, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ", resolved_at_val, ", NOW())
     ")
-
+    
     rows_affected <- dbExecute(db_conn, query, params = list(
       region_id, channel_id, teacher_name, teacher_phone, teacher_staff_id,
       school_name, district, category_id, subcategory_id, priority, status, summary, description,
       entry_mode, quick_outcome
     ))
-
+    
     if (rows_affected > 0) {
       # Generate case_code from ticket_id (guaranteed unique by AUTO_INCREMENT)
       ticket_id <- as.integer(dbGetQuery(db_conn, "SELECT LAST_INSERT_ID() AS id")$id[1])
       generated_code <- sprintf("GES-%d-%06d", as.integer(format(Sys.Date(), "%Y")), ticket_id)
       dbExecute(db_conn, "UPDATE tickets SET case_code = ? WHERE ticket_id = ?",
                 params = list(generated_code, ticket_id))
-
+      
       if (entry_mode == "quick") {
         showNotification(paste("Quick entry logged!", generated_code), type = "message", duration = 3)
       } else {
@@ -889,7 +860,7 @@ insert_ticket <- function(con, region_id, channel_id, teacher_name, teacher_phon
       showNotification("Failed to create case - no rows affected", type = "error")
       return(FALSE)
     }
-
+    
   }, error = function(e) {
     showNotification(paste("Error saving ticket:", e$message), type = "error")
     return(FALSE)
@@ -942,7 +913,7 @@ fetch_tickets <- function(con, region_id = NULL, status_filter = NULL, category_
       base_query <- paste(base_query, "AND t.created_at >= ?")
       params <- append(params, paste0(as.character(date_from), " 00:00:00"))
     }
-
+    
     if (!is.null(date_to) && !is.na(date_to)) {
       base_query <- paste(base_query, "AND t.created_at < DATE_ADD(?, INTERVAL 1 DAY)")
       params <- append(params, paste0(as.character(date_to), " 00:00:00"))
@@ -969,7 +940,7 @@ get_dashboard_stats <- function(con, region_id = NULL) {
     averages = data.frame(avg_resolution_hours = 0, escalation_rate = 0)
   )
   if (is.null(con)) return(empty_result)
-
+  
   tryCatch({
     region_filter <- ""
     params <- list()
@@ -977,15 +948,15 @@ get_dashboard_stats <- function(con, region_id = NULL) {
       region_filter <- " WHERE t.region_id = ?"
       params <- list(region_id)
     }
-
+    
     # 1. Status counts (aggregated in SQL)
     status_q <- paste0("SELECT t.status, COUNT(*) as count FROM tickets t", region_filter, " GROUP BY t.status")
     status_data <- if (length(params) > 0) dbGetQuery(con, status_q, params = params) else dbGetQuery(con, status_q)
-
+    
     # 2. Priority counts (aggregated in SQL)
     priority_q <- paste0("SELECT t.priority, COUNT(*) as count FROM tickets t", region_filter, " GROUP BY t.priority")
     priority_data <- if (length(params) > 0) dbGetQuery(con, priority_q, params = params) else dbGetQuery(con, priority_q)
-
+    
     # 3. Top 10 categories (aggregated in SQL)
     cat_filter <- if (nchar(region_filter) > 0) " AND t.region_id = ?" else ""
     category_q <- paste0(
@@ -995,7 +966,7 @@ get_dashboard_stats <- function(con, region_id = NULL) {
       " GROUP BY category_name ORDER BY count DESC LIMIT 10"
     )
     category_data <- if (length(params) > 0) dbGetQuery(con, category_q, params = params) else dbGetQuery(con, category_q)
-
+    
     # 4. Averages (aggregated in SQL)
     avg_q <- paste0(
       "SELECT ",
@@ -1007,14 +978,14 @@ get_dashboard_stats <- function(con, region_id = NULL) {
     if (nrow(avg_data) == 0 || is.na(avg_data$avg_resolution_hours[1])) {
       avg_data <- data.frame(avg_resolution_hours = 0, escalation_rate = 0)
     }
-
+    
     return(list(
       status = status_data,
       priority = priority_data,
       category = category_data,
       averages = avg_data
     ))
-
+    
   }, error = function(e) {
     showNotification(paste("Error loading dashboard stats:", e$message), type = "error")
     return(empty_result)
@@ -1032,10 +1003,10 @@ ui <- tagList(
   # ========================================
   div(id = "landing_overlay",
       style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; background: #ffffff; overflow-y: auto;",
-
+      
       # Top navigation bar - clean header with border
       div(style = "padding: 12px 40px; display: flex; justify-content: space-between; align-items: center; background: #ffffff; border-bottom: 1px solid #e5e7eb;",
-
+          
           # Logo / Branding
           div(style = "display: flex; align-items: center; gap: 10px;",
               div(style = "width: 34px; height: 34px; background: #1e3a8a; border-radius: 6px; display: flex; align-items: center; justify-content: center;",
@@ -1043,10 +1014,10 @@ ui <- tagList(
               ),
               div(
                 tags$span("GES", style = "font-size: 15px; font-weight: 700; color: #1e3a8a; letter-spacing: 0.5px;"),
-                tags$span(" Teacher Helpline", style = "font-size: 15px; font-weight: 400; color: #4b5563;")
+                tags$span(" Teacher Helpline & Query Tracking System ", style = "font-size: 15px; font-weight: 400; color: #4b5563;")
               )
           ),
-
+          
           div(
             actionButton("landing_analytics_btn", "View Analytics",
                          class = "btn", style = "background: #ffffff; border: 1px solid #d1d5db; color: #374151; margin-right: 8px; padding: 8px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;"),
@@ -1054,7 +1025,7 @@ ui <- tagList(
                          class = "btn", style = "background: #1e3a8a; color: #ffffff; border: 1px solid #1e3a8a; padding: 8px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;")
           )
       ),
-
+      
       # Hero section - classroom image background with overlay
       div(style = "position: relative; background: url('classroom_hero.jpg') center center / cover no-repeat, #1e3a8a; min-height: 340px; display: flex; align-items: center; justify-content: center;",
           # Dark overlay for text readability
@@ -1062,10 +1033,10 @@ ui <- tagList(
           # Content on top of overlay
           div(style = "position: relative; z-index: 1; max-width: 760px; margin: 0 auto; text-align: center; padding: 64px 40px 56px 40px;",
               tags$p("GHANA EDUCATION SERVICE", style = "color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 600; letter-spacing: 2px; margin: 0 0 12px 0;"),
-              tags$h1("Teacher Support Helpline", style = "color: #ffffff; font-size: 36px; font-weight: 700; margin: 0 0 16px 0; line-height: 1.3; text-shadow: 0 2px 4px rgba(0,0,0,0.2);"),
-              tags$p("A centralized case management system serving teachers across all 16 regions of Ghana. Log queries, track resolutions, and monitor performance.",
+              tags$h1("Teacher Support Helpline & Query Tracking System", style = "color: #ffffff; font-size: 36px; font-weight: 700; margin: 0 0 16px 0; line-height: 1.3; text-shadow: 0 2px 4px rgba(0,0,0,0.2);"),
+              tags$p("A centralised case management system serving teachers across all 16 regions of Ghana. Receive calls from teachers, Log queries, track resolutions and monitor performance.",
                      style = "color: rgba(255,255,255,0.9); font-size: 16px; line-height: 1.6; max-width: 580px; margin: 0 auto 28px auto;"),
-
+              
               div(style = "display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;",
                   actionButton("hero_login_btn", "Staff Login",
                                class = "btn", style = "background: #ffffff; color: #1e3a8a; border: none; padding: 12px 32px; border-radius: 6px; font-size: 15px; font-weight: 600;"),
@@ -1074,7 +1045,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Live Statistics - clean cards on light background
       div(style = "background: #f8fafc; padding: 36px 40px; border-bottom: 1px solid #e5e7eb;",
           div(style = "max-width: 960px; margin: 0 auto;",
@@ -1098,7 +1069,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Feature cards - white cards, no glassmorphism
       div(style = "padding: 48px 40px; background: #ffffff;",
           div(style = "max-width: 960px; margin: 0 auto;",
@@ -1128,7 +1099,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # How It Works - clean numbered steps
       div(style = "padding: 48px 40px; background: #f8fafc; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;",
           div(style = "max-width: 800px; margin: 0 auto;",
@@ -1165,7 +1136,7 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Contact Section - classroom image background with overlay
       div(style = "position: relative; background: url('classroom_hero_2.jpg') center center / cover no-repeat, #1e3a8a; min-height: 260px; display: flex; align-items: center; justify-content: center;",
           # Dark overlay for text readability
@@ -1194,11 +1165,11 @@ ui <- tagList(
               )
           )
       ),
-
+      
       # Footer
       div(style = "text-align: center; padding: 24px 40px; background: #f8fafc; border-top: 1px solid #e5e7eb;",
           tags$p(HTML("Ghana Education Service &mdash; Ministry of Education"), style = "color: #6b7280; font-size: 13px; margin: 0 0 4px 0;"),
-          tags$p(paste0("Teacher Support Helpline System ", format(Sys.Date(), "%Y")), style = "color: #9ca3af; font-size: 12px; margin: 0;")
+          tags$p(paste0("Teacher Support Helpline and Query Tracking System ", format(Sys.Date(), "%Y")), style = "color: #9ca3af; font-size: 12px; margin: 0;")
       )
   ),
   
@@ -1208,7 +1179,7 @@ ui <- tagList(
   hidden(
     div(id = "login_overlay",
         style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100000; background: #f1f5f9; display: flex; align-items: center; justify-content: center;",
-
+        
         div(style = "background: white; border-radius: 8px; padding: 36px; width: 400px; max-width: 90%; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); border: 1px solid #e5e7eb;",
             
             # Back button
@@ -1251,7 +1222,7 @@ ui <- tagList(
         style = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100001; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;",
         
         div(style = "background: white; border-radius: 8px; padding: 36px; width: 450px; max-width: 90%; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); border: 1px solid #e5e7eb;",
-
+            
             div(style = "text-align: center; margin-bottom: 25px;",
                 div(style = "width: 44px; height: 44px; background: #fef3c7; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px;",
                     icon("key", style = "font-size: 20px; color: #92400e;")
@@ -1337,10 +1308,768 @@ ui <- tagList(
             # Hidden input for tab navigation
             shinyjs::hidden(textInput("current_tab", "", value = "dashboard")),
             
-            # CSS extracted to www/styles.css for faster loading
+            # Enhanced CSS for modern styling and case details
             tags$head(
+              # Load Font Awesome
               tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"),
-              tags$link(rel = "stylesheet", href = "styles.css"),
+              tags$style(HTML("
+              /* ============================================ */
+              /* HORIZONTAL NAVIGATION STYLING */
+              /* ============================================ */
+
+              /* Header styling */
+              .main-header {
+                max-height: none !important;
+              }
+
+              .main-header .navbar {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%) !important;
+                margin-left: 200px !important;
+                min-height: 60px !important;
+              }
+
+              .main-header .logo {
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+                width: 200px !important;
+                font-size: 16px !important;
+                font-weight: 700 !important;
+                height: 60px !important;
+                line-height: 60px !important;
+                padding: 0 10px !important;
+              }
+
+              /* Hide sidebar and its toggle completely */
+              .sidebar-toggle {
+                display: none !important;
+              }
+
+              .main-sidebar {
+                display: none !important;
+                width: 0 !important;
+              }
+
+              .left-side, .main-sidebar {
+                width: 0 !important;
+                min-width: 0 !important;
+              }
+
+              /* Content wrapper - full width without sidebar */
+              .content-wrapper, .right-side, .main-footer {
+                margin-left: 0 !important;
+                background-color: #f8fafc;
+              }
+
+              body.sidebar-collapse .content-wrapper,
+              body.sidebar-collapse .right-side,
+              body.sidebar-collapse .main-footer {
+                margin-left: 0 !important;
+              }
+
+              /* Navigation menu container */
+              .nav-menu-container {
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 !important;
+                margin: 0 !important;
+              }
+
+              .nav-menu-container > a {
+                display: none !important;
+              }
+
+              /* Horizontal navigation buttons */
+              .header-nav-menu {
+                display: flex !important;
+                align-items: center !important;
+                gap: 5px !important;
+                padding: 0 10px !important;
+              }
+
+              .nav-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                padding: 12px 20px !important;
+                font-size: 15px !important;
+                font-weight: 600 !important;
+                color: white !important;
+                background: rgba(255, 255, 255, 0.1) !important;
+                border: none !important;
+                border-radius: 8px !important;
+                cursor: pointer !important;
+                transition: all 0.3s ease !important;
+                text-decoration: none !important;
+                white-space: nowrap !important;
+                margin: 5px 3px !important;
+              }
+
+              .nav-btn:hover {
+                background: rgba(255, 255, 255, 0.25) !important;
+                transform: translateY(-2px) !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+              }
+
+              .nav-btn.active {
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4) !important;
+              }
+
+              .nav-btn i {
+                margin-right: 8px !important;
+                font-size: 16px !important;
+              }
+
+              /* Quick lookup in header */
+              .quick-lookup-header {
+                display: flex !important;
+                align-items: center !important;
+                padding: 0 15px !important;
+              }
+
+              .quick-lookup-header > a {
+                display: none !important;
+              }
+
+              .header-quick-search {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                background: rgba(255, 255, 255, 0.1) !important;
+                padding: 6px 12px !important;
+                border-radius: 8px !important;
+              }
+
+              .header-quick-search input {
+                background: rgba(255, 255, 255, 0.15) !important;
+                border: 1px solid rgba(255, 255, 255, 0.3) !important;
+                color: white !important;
+                padding: 8px 12px !important;
+                border-radius: 6px !important;
+                width: 160px !important;
+                font-size: 14px !important;
+              }
+
+              .header-quick-search input::placeholder {
+                color: rgba(255, 255, 255, 0.6) !important;
+              }
+
+              .header-quick-search input:focus {
+                outline: none !important;
+                border-color: #f59e0b !important;
+                background: rgba(255, 255, 255, 0.25) !important;
+              }
+
+              .header-quick-search .btn {
+                background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                border: none !important;
+                color: white !important;
+                padding: 8px 16px !important;
+                border-radius: 6px !important;
+                font-weight: 600 !important;
+                font-size: 13px !important;
+                cursor: pointer !important;
+                transition: all 0.3s ease !important;
+              }
+
+              .header-quick-search .btn:hover {
+                background: linear-gradient(135deg, #d97706 0%, #b45309 100%) !important;
+                transform: translateY(-1px) !important;
+              }
+
+              /* User menu styling */
+              .user-menu-header {
+                padding: 0 15px !important;
+              }
+
+              .user-menu-header .user-info-box {
+                display: flex !important;
+                align-items: center !important;
+                gap: 10px !important;
+              }
+
+              .user-menu-header .user-details {
+                text-align: right !important;
+                line-height: 1.3 !important;
+              }
+
+              .user-menu-header .user-name {
+                color: white !important;
+                font-weight: 600 !important;
+                font-size: 14px !important;
+              }
+
+              .user-menu-header .user-role {
+                color: rgba(255, 255, 255, 0.7) !important;
+                font-size: 12px !important;
+              }
+
+              .user-menu-header .btn-logout {
+                background: rgba(220, 38, 38, 0.8) !important;
+                border: none !important;
+                color: white !important;
+                padding: 8px 16px !important;
+                border-radius: 6px !important;
+                font-weight: 600 !important;
+                font-size: 13px !important;
+                transition: all 0.3s ease !important;
+              }
+
+              .user-menu-header .btn-logout:hover {
+                background: rgba(220, 38, 38, 1) !important;
+              }
+
+              /* ============================================ */
+              /* END HORIZONTAL NAVIGATION STYLING */
+              /* ============================================ */
+
+              .content-wrapper, .right-side {
+                background-color: #f8fafc;
+              }
+
+              .info-box {
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                border: none;
+                margin-bottom: 20px;
+              }
+
+              .box {
+                border-radius: 8px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                border: none;
+              }
+
+              .btn-primary {
+                background-color: #2563eb;
+                border-color: #2563eb;
+              }
+
+              .case-code {
+                font-weight: bold;
+                color: #1e3a8a;
+                cursor: pointer;
+              }
+
+              .case-code:hover {
+                text-decoration: underline;
+              }
+
+              .priority-high { color: #dc2626; font-weight: bold; }
+              .priority-medium { color: #ea580c; font-weight: bold; }
+              .priority-low { color: #16a085; font-weight: bold; }
+              .priority-urgent { color: #7c2d12; font-weight: bold; }
+
+              .badge {
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: bold;
+              }
+
+              .status-new { background-color: #3b82f6; color: white; }
+              .status-in-progress { background-color: #f59e0b; color: white; }
+              .status-waiting-on-teacher { background-color: #8b5cf6; color: white; }
+              .status-escalated { background-color: #dc2626; color: white; }
+              .status-resolved { background-color: #16a085; color: white; }
+              .status-closed { background-color: #6b7280; color: white; }
+
+              /* Escalation Popup Styles */
+              .escalation-popup {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+                color: white;
+                padding: 30px;
+                border-radius: 12px;
+                box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+                z-index: 10000;
+                min-width: 400px;
+                max-width: 600px;
+                animation: escalationPulse 0.5s ease-out;
+              }
+
+              @keyframes escalationPulse {
+                0% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+                50% { transform: translate(-50%, -50%) scale(1.05); }
+                100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+              }
+
+              .escalation-popup h3 {
+                margin-top: 0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+              }
+
+              .escalation-popup .close-btn {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                background: rgba(255,255,255,0.2);
+                border: none;
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                cursor: pointer;
+              }
+
+              .escalation-popup .close-btn:hover {
+                background: rgba(255,255,255,0.3);
+              }
+
+              .escalation-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 9999;
+              }
+
+              /* Bulk Operations Styles */
+              .bulk-actions-bar {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%);
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                flex-wrap: wrap;
+              }
+
+              .bulk-actions-bar .selected-count {
+                color: white;
+                font-weight: 600;
+                font-size: 14px;
+              }
+
+              .bulk-actions-bar .btn {
+                background: rgba(255,255,255,0.2);
+                border: 1px solid rgba(255,255,255,0.3);
+                color: white;
+              }
+
+              .bulk-actions-bar .btn:hover {
+                background: rgba(255,255,255,0.3);
+              }
+
+              /* Follow-up Calendar Styles */
+              .follow-up-card {
+                background: white;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border-left: 4px solid #3b82f6;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+
+              .follow-up-card.overdue {
+                border-left-color: #dc2626;
+                background: #fef2f2;
+              }
+
+              .follow-up-card.due-today {
+                border-left-color: #f59e0b;
+                background: #fffbeb;
+              }
+
+              /* Template Card Styles */
+              .template-card {
+                background: white;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 10px;
+                border: 1px solid #e5e7eb;
+                cursor: pointer;
+                transition: all 0.2s ease;
+              }
+
+              .template-card:hover {
+                border-color: #3b82f6;
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+              }
+
+              .template-card.selected {
+                border-color: #3b82f6;
+                background: #eff6ff;
+              }
+
+              .template-category-badge {
+                display: inline-block;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+              }
+
+              .template-category-payroll { background: #dbeafe; color: #1e40af; }
+              .template-category-welfare { background: #fee2e2; color: #991b1b; }
+              .template-category-transfer { background: #d1fae5; color: #065f46; }
+              .template-category-general { background: #e5e7eb; color: #374151; }
+              .template-category-escalation { background: #fef3c7; color: #92400e; }
+
+              .sla-overdue { color: #dc2626; font-weight: bold; }
+              .sla-due-soon { color: #ea580c; font-weight: bold; }
+              .sla-on-track { color: #16a085; }
+
+              .case-details-header {
+                background: linear-gradient(135deg, #1e3a8a 0%, #2c5aa0 100%);
+                color: white;
+                padding: 20px;
+                border-radius: 8px 8px 0 0;
+                margin: -15px -15px 20px -15px;
+              }
+
+              .case-info-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                gap: 20px;
+                margin-bottom: 20px;
+              }
+
+              .info-card {
+                background: white;
+                padding: 15px;
+                border-radius: 8px;
+                border-left: 4px solid #2563eb;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+              }
+
+              .info-label {
+                font-weight: bold;
+                color: #374151;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 5px;
+              }
+
+              .info-value {
+                color: #1f2937;
+                font-size: 14px;
+              }
+
+              .timeline-item {
+                border-left: 3px solid #e5e7eb;
+                padding-left: 15px;
+                margin-bottom: 15px;
+                position: relative;
+              }
+
+              .timeline-item:before {
+                content: '';
+                position: absolute;
+                left: -6px;
+                top: 5px;
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background-color: #3b82f6;
+              }
+
+              .timeline-content {
+                background: white;
+                padding: 12px;
+                border-radius: 6px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+              }
+
+              .timeline-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 5px;
+              }
+
+              .timeline-action {
+                font-weight: bold;
+                color: #1e3a8a;
+              }
+
+              .timeline-date {
+                font-size: 11px;
+                color: #6b7280;
+              }
+
+              .timeline-text {
+                font-size: 13px;
+                color: #374151;
+                line-height: 1.4;
+              }
+
+              .modal-xl {
+                width: 95%;
+                max-width: 1200px;
+              }
+
+              .user-header-info {
+                color: white;
+                padding: 10px 15px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+              }
+              .user-header-info .user-name {
+                font-weight: 600;
+                font-size: 13px;
+              }
+              .user-header-info .user-role {
+                font-size: 11px;
+                opacity: 0.8;
+              }
+
+              
+
+              /* Old sidebar styles removed - sidebar is now hidden */
+
+              /* ============================================ */
+              /* ANALYTICS DASHBOARD REDESIGN                */
+              /* ============================================ */
+
+              /* Analytics filter bar */
+              .analytics-filter-bar {
+                background: white;
+                border-radius: 12px;
+                padding: 16px 24px;
+                margin-bottom: 24px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                flex-wrap: wrap;
+                border: 1px solid #e2e8f0;
+              }
+              .analytics-filter-bar label {
+                font-weight: 600;
+                color: #475569;
+                font-size: 13px;
+                margin-bottom: 0;
+              }
+              .analytics-filter-bar .form-group {
+                margin-bottom: 0;
+              }
+              .analytics-filter-bar .form-control,
+              .analytics-filter-bar .selectize-input {
+                border-radius: 8px !important;
+                border: 1px solid #cbd5e1 !important;
+                font-size: 13px !important;
+              }
+
+              /* KPI Metric Cards */
+              .kpi-card {
+                background: white;
+                border-radius: 14px;
+                padding: 20px 24px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+                border: 1px solid #e2e8f0;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                position: relative;
+                overflow: hidden;
+              }
+              .kpi-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+              }
+              .kpi-card .kpi-icon {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                color: white;
+                margin-bottom: 12px;
+              }
+              .kpi-card .kpi-label {
+                font-size: 12px;
+                font-weight: 600;
+                color: #64748b;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 4px;
+              }
+              .kpi-card .kpi-value {
+                font-size: 28px;
+                font-weight: 800;
+                color: #0f172a;
+                line-height: 1.1;
+                margin-bottom: 8px;
+              }
+              .kpi-card .kpi-trend {
+                font-size: 13px;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 3px 8px;
+                border-radius: 6px;
+              }
+              .kpi-trend.trend-up {
+                color: #059669;
+                background: #ecfdf5;
+              }
+              .kpi-trend.trend-down {
+                color: #dc2626;
+                background: #fef2f2;
+              }
+              .kpi-trend.trend-neutral {
+                color: #64748b;
+                background: #f1f5f9;
+              }
+              .kpi-card .kpi-subtitle {
+                font-size: 12px;
+                color: #94a3b8;
+                margin-top: 2px;
+              }
+              .kpi-card .kpi-accent {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 4px;
+              }
+
+              /* Analytics section header */
+              .analytics-section-title {
+                font-size: 18px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .analytics-section-subtitle {
+                font-size: 13px;
+                color: #64748b;
+                margin-bottom: 20px;
+              }
+
+              /* Chart cards */
+              .chart-card {
+                background: white;
+                border-radius: 14px;
+                padding: 20px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+                border: 1px solid #e2e8f0;
+                margin-bottom: 20px;
+              }
+              .chart-card .chart-title {
+                font-size: 15px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-bottom: 4px;
+              }
+              .chart-card .chart-subtitle {
+                font-size: 12px;
+                color: #94a3b8;
+                margin-bottom: 16px;
+              }
+
+              /* Analytics tab styling overrides */
+              .analytics-tabs .nav-tabs {
+                border-bottom: 2px solid #e2e8f0;
+                margin-bottom: 24px;
+              }
+              .analytics-tabs .nav-tabs > li > a {
+                border: none;
+                color: #64748b;
+                font-weight: 600;
+                font-size: 14px;
+                padding: 10px 20px;
+                border-bottom: 3px solid transparent;
+                margin-bottom: -2px;
+                transition: all 0.2s ease;
+              }
+              .analytics-tabs .nav-tabs > li > a:hover {
+                color: #1e3a8a;
+                background: transparent;
+                border-bottom-color: #cbd5e1;
+              }
+              .analytics-tabs .nav-tabs > li.active > a,
+              .analytics-tabs .nav-tabs > li.active > a:hover,
+              .analytics-tabs .nav-tabs > li.active > a:focus {
+                color: #1e3a8a;
+                background: transparent;
+                border: none;
+                border-bottom: 3px solid #1e3a8a;
+              }
+
+              /* Stat mini cards for executive summary */
+              .stat-mini {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                background: white;
+                padding: 14px 16px;
+                border-radius: 10px;
+                border: 1px solid #e2e8f0;
+              }
+              .stat-mini .stat-dot {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                flex-shrink: 0;
+              }
+              .stat-mini .stat-info {
+                flex: 1;
+              }
+              .stat-mini .stat-info .stat-label {
+                font-size: 12px;
+                color: #64748b;
+                font-weight: 500;
+              }
+              .stat-mini .stat-info .stat-val {
+                font-size: 18px;
+                font-weight: 700;
+                color: #0f172a;
+              }
+
+              /* Override shinydashboard boxes inside analytics */
+              .tab-pane .chart-card .box {
+                border: none !important;
+                box-shadow: none !important;
+                margin-bottom: 0;
+              }
+
+              /* Analytics table styling */
+              .analytics-table .dataTables_wrapper {
+                font-size: 13px;
+              }
+              .analytics-table .dataTables_wrapper .dataTables_length,
+              .analytics-table .dataTables_wrapper .dataTables_filter {
+                margin-bottom: 12px;
+              }
+
+              /* Executive summary grid */
+              .exec-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 16px;
+                margin-bottom: 24px;
+              }
+
+              /* ============================================ */
+              /* END ANALYTICS DASHBOARD REDESIGN             */
+              /* ============================================ */
+
+              /* Phone validation feedback */
+              .phone-hint {
+                font-size: 11px;
+                color: #6b7280;
+                margin-top: 2px;
+              }
+              .phone-hint.invalid {
+                color: #dc2626;
+              }
+              .phone-hint.valid {
+                color: #059669;
+              }
+
+            ")),
               tags$script(HTML("
               $(document).on('shiny:connected', function() {
                 // Set phone inputs to type=tel for mobile keyboards
@@ -1377,7 +2106,7 @@ ui <- tagList(
               });
             "))
             ),
-
+            
             # Case Details Modal
             tags$div(id = "caseDetailsModal", class = "modal fade", tabindex = "-1", role = "dialog",
                      tags$div(class = "modal-dialog modal-xl", role = "document",
@@ -1966,13 +2695,13 @@ ui <- tagList(
               # ============================================
               tabItem(
                 tabName = "analytics",
-
+                
                 # Page header
                 div(style = "margin-bottom: 8px;",
                     h2("Analytics Dashboard", class = "analytics-section-title", style = "margin-top: 0;"),
                     p("Performance insights, SLA tracking, and trend analysis", class = "analytics-section-subtitle")
                 ),
-
+                
                 # Filter bar
                 div(class = "analytics-filter-bar",
                     tags$i(class = "fas fa-filter", style = "color: #94a3b8; font-size: 16px;"),
@@ -1998,12 +2727,12 @@ ui <- tagList(
                                      style = "background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; color: #475569;")
                     )
                 ),
-
+                
                 # Tabs
                 div(class = "analytics-tabs",
                     tabsetPanel(
                       id = "analytics_tabs",
-
+                      
                       # ===== 1) Executive Summary =====
                       tabPanel(
                         title = tagList(icon("tachometer-alt"), " Overview"),
@@ -2059,7 +2788,7 @@ ui <- tagList(
                           )
                         )
                       ),
-
+                      
                       # ===== 2) Regional Performance =====
                       tabPanel(
                         title = tagList(icon("map-marked-alt"), " Regional"),
@@ -2087,7 +2816,7 @@ ui <- tagList(
                             withSpinner(DTOutput("region_table"))
                         )
                       ),
-
+                      
                       # ===== 3) Category Trends =====
                       tabPanel(
                         title = tagList(icon("tags"), " Categories"),
@@ -2115,7 +2844,7 @@ ui <- tagList(
                             withSpinner(DTOutput("category_trend_table"))
                         )
                       ),
-
+                      
                       # ===== 4) SLA Monitoring =====
                       tabPanel(
                         title = tagList(icon("clock"), " SLA"),
@@ -2147,7 +2876,7 @@ ui <- tagList(
                             withSpinner(DTOutput("sla_overdue_table"))
                         )
                       ),
-
+                      
                       # ===== 5) Time Series =====
                       tabPanel(
                         title = tagList(icon("chart-line"), " Trends"),
@@ -2175,7 +2904,7 @@ ui <- tagList(
                             withSpinner(DTOutput("monthly_trend_table"))
                         )
                       )
-
+                      
                     ) # end tabsetPanel
                 ) # end analytics-tabs div
               ) # end tabItem
@@ -2300,7 +3029,7 @@ server <- function(input, output, session) {
     input$export_excel
     # Track any page state change
     rv$page_state
-
+    
     isolate({
       if (isTRUE(rv$logged_in)) {
         rv$last_activity <- Sys.time()
@@ -2366,12 +3095,12 @@ server <- function(input, output, session) {
       list(total = 0, resolved = 0)
     })
   })
-
+  
   output$landing_total_cases <- renderUI({
     stats <- landing_stats()
     tags$span(format(stats$total, big.mark = ","))
   })
-
+  
   output$landing_resolved_cases <- renderUI({
     stats <- landing_stats()
     tags$span(format(stats$resolved, big.mark = ","))
@@ -3097,7 +3826,7 @@ server <- function(input, output, session) {
   # Auto-refresh: invalidate dashboard data every 5 minutes
   # Only fires when user is logged in AND on the dashboard tab
   dashboard_stats_invalidator <- reactiveVal(0)
-
+  
   observe({
     invalidateLater(300000, session)  # 300,000 ms = 5 minutes
     isolate({
@@ -3106,7 +3835,7 @@ server <- function(input, output, session) {
       }
     })
   })
-
+  
   # Dashboard KPIs (auto-refreshing) - filtered by user's region
   dashboard_stats <- reactive({
     dashboard_stats_invalidator()
@@ -3217,17 +3946,17 @@ server <- function(input, output, session) {
   
   # Cooldown to prevent rapid-fire refresh clicks
   last_dashboard_refresh <- reactiveVal(as.numeric(Sys.time()) - 5)
-
+  
   observeEvent(input$manual_refresh_dashboard, {
     now <- as.numeric(Sys.time())
     if (now - last_dashboard_refresh() < 3) return()  # 3-second cooldown
     last_dashboard_refresh(now)
     dashboard_stats_invalidator(dashboard_stats_invalidator() + 1)
   })
-
+  
   # Last refresh time tracker
   last_refresh <- reactiveVal(Sys.time())
-
+  
   # New prominent refresh button handler
   observeEvent(input$refresh_case_summary, {
     now <- as.numeric(Sys.time())
@@ -3285,20 +4014,20 @@ server <- function(input, output, session) {
       showNotification("Case summary must be at least 20 characters", type = "warning")
       return()
     }
-
+    
     # Validate and normalize phone number
     phone_result <- validate_ghana_phone(input$teacher_phone)
     if (!phone_result$valid) {
       showNotification(phone_result$msg, type = "warning")
       return()
     }
-
+    
     sub_id <- if (!is.null(input$subcategory_id) && input$subcategory_id != "") {
       input$subcategory_id
     } else {
       NULL
     }
-
+    
     success <- insert_ticket(
       con = con(),
       region_id = input$region_select %or% 1,
@@ -3418,13 +4147,13 @@ server <- function(input, output, session) {
       }
       quick_phone <- phone_result$normalized
     }
-
+    
     sub_id <- if (!is.null(input$quick_subcategory_id) && input$quick_subcategory_id != "") {
       as.integer(input$quick_subcategory_id)
     } else {
       NULL
     }
-
+    
     success <- insert_ticket(
       con = con(),
       region_id = input$quick_region %or% 1,
@@ -3550,7 +4279,7 @@ server <- function(input, output, session) {
   
   # Debounced search inputs - prevents a DB query on every keystroke (500ms delay)
   all_search_debounced <- debounce(reactive({ input$all_search_text }), 500)
-
+  
   # Data tables with role-based region access control
   recent_cases_data <- reactive({
     dashboard_stats_invalidator()
@@ -3703,14 +4432,14 @@ server <- function(input, output, session) {
                   colnames = c("Case", "Created", "Teacher", "School", "Category", "Priority", "Status", "Age")
     )
   }, server = TRUE)
-
+  
   output$all_cases_table <- DT::renderDataTable({
     data <- all_cases_data()
     if (nrow(data) == 0) return(data.frame(Message = "No cases found"))
-
+    
     # Ensure entry_mode column exists (backwards compatibility)
     if (!"entry_mode" %in% names(data)) data$entry_mode <- "full"
-
+    
     display_data <- data %>%
       select(ticket_id, case_code, created_at, teacher_name, school_name, district, category_name, priority, status, entry_mode) %>%
       mutate(
@@ -3728,7 +4457,7 @@ server <- function(input, output, session) {
         status = paste0('<span class="badge status-', tolower(gsub(" ", "-", escape_html_vec(status))), '">', escape_html_vec(status), '</span>')
       ) %>%
       select(-ticket_id, -entry_mode)
-
+    
     DT::datatable(display_data,
                   options = list(
                     pageLength = 20,
@@ -4361,7 +5090,7 @@ server <- function(input, output, session) {
   # ========================================
   # ANALYTICS DASHBOARD (Redesigned)
   # ========================================
-
+  
   # Shared plotly theme
   plotly_font <- list(family = "system-ui, -apple-system, sans-serif", color = "#334155")
   plotly_layout_base <- list(
@@ -4374,20 +5103,20 @@ server <- function(input, output, session) {
   )
   chart_colors <- c("#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe")
   status_colors <- c("New" = "#3b82f6", "In Progress" = "#f59e0b", "Waiting on Teacher" = "#8b5cf6",
-                      "Escalated" = "#dc2626", "Resolved" = "#16a085", "Closed" = "#6b7280")
+                     "Escalated" = "#dc2626", "Resolved" = "#16a085", "Closed" = "#6b7280")
   priority_colors <- c("Urgent" = "#7c2d12", "High" = "#dc2626", "Medium" = "#ea580c", "Low" = "#16a085")
-
+  
   # --- Filter reactives ---
   analytics_months <- reactive({
     m <- input$analytics_period
     if (is.null(m)) 3 else as.integer(m)
   })
-
+  
   analytics_region <- reactive({
     r <- input$analytics_region_select
     if (is.null(r) || r == "" || r == "all") NULL else r
   })
-
+  
   # Region filter UI
   output$analytics_region_filter <- renderUI({
     regions_df <- get_regions(con())
@@ -4398,7 +5127,7 @@ server <- function(input, output, session) {
     }
     selectInput("analytics_region_select", NULL, choices = choices, selected = "all", width = "180px")
   })
-
+  
   # Refresh button with cooldown
   analytics_invalidator <- reactiveVal(0)
   last_analytics_refresh <- reactiveVal(as.numeric(Sys.time()) - 5)
@@ -4408,54 +5137,54 @@ server <- function(input, output, session) {
     last_analytics_refresh(now)
     analytics_invalidator(analytics_invalidator() + 1)
   })
-
+  
   # --- Data reactives with filters (lazy: only run when analytics tab is active) ---
   analytics_trend_data <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_analytics_trends(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   analytics_status_dist <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_status_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   analytics_priority_dist <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_priority_distribution(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   regional_perf <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_regional_performance(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   category_trends <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_category_trends(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   monthly_series <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_time_series(con(), months_back = analytics_months(), region_id = analytics_region())
   })
-
+  
   sla_data <- reactive({
     req(con(), input$sidebar_menu == "analytics")
     analytics_invalidator()
     get_sla_overview(con(), region_id = analytics_region())
   })
-
+  
   # --- Helper: build KPI card HTML ---
   build_kpi_card <- function(label, value, icon_class, accent_color, trend_val = NULL, trend_label = "", icon_bg = NULL) {
     if (is.null(icon_bg)) icon_bg <- accent_color
-
+    
     trend_html <- ""
     if (!is.null(trend_val) && !is.na(trend_val)) {
       if (trend_val > 0) {
@@ -4476,7 +5205,7 @@ server <- function(input, output, session) {
         '<div class="kpi-subtitle">', trend_label, '</div>'
       )
     }
-
+    
     tags$div(class = "kpi-card",
              tags$div(class = "kpi-accent", style = paste0("background: ", accent_color, ";")),
              tags$div(class = "kpi-icon", style = paste0("background: ", icon_bg, ";"),
@@ -4486,13 +5215,13 @@ server <- function(input, output, session) {
              HTML(trend_html)
     )
   }
-
+  
   # --- Helper: compute % change safely ---
   pct_change <- function(current, previous) {
     if (is.null(previous) || is.na(previous) || previous == 0) return(NA_real_)
     round(((current - previous) / previous) * 100, 1)
   }
-
+  
   # ===========================
   # Executive Summary KPI Cards
   # ===========================
@@ -4503,7 +5232,7 @@ server <- function(input, output, session) {
     build_kpi_card("Total Cases", format(cur, big.mark = ","), "fa-layer-group",
                    "#1e3a8a", pct_change(cur, prev), "vs previous period")
   })
-
+  
   output$kpi_resolved <- renderUI({
     d <- analytics_trend_data()
     cur <- if (nrow(d$current) > 0) d$current$resolved_cases[1] else 0
@@ -4511,7 +5240,7 @@ server <- function(input, output, session) {
     build_kpi_card("Resolved", format(cur, big.mark = ","), "fa-check-circle",
                    "#059669", pct_change(cur, prev), "vs previous period")
   })
-
+  
   output$kpi_resolution_rate <- renderUI({
     d <- analytics_trend_data()
     cur_total <- if (nrow(d$current) > 0) d$current$total_cases[1] else 0
@@ -4524,7 +5253,7 @@ server <- function(input, output, session) {
     build_kpi_card("Resolution Rate", paste0(cur_rate, "%"), "fa-percentage",
                    "#7c3aed", change, "percentage points", icon_bg = "#7c3aed")
   })
-
+  
   output$kpi_avg_time <- renderUI({
     d <- analytics_trend_data()
     cur <- if (nrow(d$current) > 0 && !is.na(d$current$avg_resolution_hours[1])) round(d$current$avg_resolution_hours[1], 1) else 0
@@ -4535,7 +5264,7 @@ server <- function(input, output, session) {
     build_kpi_card("Avg Resolution", paste(cur, "hrs"), "fa-clock",
                    "#ea580c", trend, "vs previous period (lower is better)", icon_bg = "#ea580c")
   })
-
+  
   output$kpi_open_cases <- renderUI({
     d <- analytics_trend_data()
     cur <- if (nrow(d$current) > 0) d$current$open_cases[1] else 0
@@ -4546,7 +5275,7 @@ server <- function(input, output, session) {
     build_kpi_card("Open Cases", format(cur, big.mark = ","), "fa-folder-open",
                    "#2563eb", trend, "vs previous period", icon_bg = "#2563eb")
   })
-
+  
   output$kpi_escalated <- renderUI({
     d <- analytics_trend_data()
     cur <- if (nrow(d$current) > 0) d$current$escalated_cases[1] else 0
@@ -4557,7 +5286,7 @@ server <- function(input, output, session) {
     build_kpi_card("Escalated", format(cur, big.mark = ","), "fa-exclamation-triangle",
                    "#dc2626", trend, "vs previous period", icon_bg = "#dc2626")
   })
-
+  
   output$kpi_new_cases <- renderUI({
     d <- analytics_trend_data()
     cur <- if (nrow(d$current) > 0) d$current$new_cases[1] else 0
@@ -4565,7 +5294,7 @@ server <- function(input, output, session) {
     build_kpi_card("New Cases", format(cur, big.mark = ","), "fa-plus-circle",
                    "#0891b2", pct_change(cur, prev), "vs previous period", icon_bg = "#0891b2")
   })
-
+  
   output$kpi_sla_overdue <- renderUI({
     s <- sla_data()$summary
     overdue <- if (nrow(s) > 0 && !is.na(s$overdue[1])) s$overdue[1] else 0
@@ -4573,14 +5302,14 @@ server <- function(input, output, session) {
     build_kpi_card("SLA Overdue", format(overdue, big.mark = ","), "fa-exclamation-circle",
                    accent, icon_bg = accent)
   })
-
+  
   # ===========================
   # Executive Summary Charts
   # ===========================
   output$overview_trend_chart <- renderPlotly({
     df <- monthly_series()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     plot_ly(df, x = ~ym) %>%
       add_trace(y = ~created, type = "scatter", mode = "lines+markers",
                 name = "Created", line = list(color = "#3b82f6", width = 3),
@@ -4598,15 +5327,15 @@ server <- function(input, output, session) {
         hovermode = "x unified"
       )
   })
-
+  
   output$overview_status_donut <- renderPlotly({
     df <- analytics_status_dist()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     colors <- sapply(df$status, function(s) {
       if (s %in% names(status_colors)) status_colors[[s]] else "#94a3b8"
     })
-
+    
     plot_ly(df, labels = ~status, values = ~count, type = "pie",
             hole = 0.55, textinfo = "label+percent", textposition = "outside",
             marker = list(colors = colors, line = list(color = "#ffffff", width = 2)),
@@ -4623,15 +5352,15 @@ server <- function(input, output, session) {
         )
       )
   })
-
+  
   output$overview_priority_chart <- renderPlotly({
     df <- analytics_priority_dist()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     colors <- sapply(df$priority, function(p) {
       if (p %in% names(priority_colors)) priority_colors[[p]] else "#94a3b8"
     })
-
+    
     plot_ly(df, x = ~reorder(priority, -count), y = ~count, type = "bar",
             marker = list(color = colors, cornerradius = 6),
             text = ~count, textposition = "outside",
@@ -4645,17 +5374,17 @@ server <- function(input, output, session) {
         bargap = 0.35
       )
   })
-
+  
   output$overview_top_categories_chart <- renderPlotly({
     df <- category_trends()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     top_cats <- df %>%
       dplyr::group_by(category_name) %>%
       dplyr::summarise(total = sum(cases), .groups = "drop") %>%
       dplyr::arrange(dplyr::desc(total)) %>%
       dplyr::slice_head(n = 8)
-
+    
     plot_ly(top_cats, y = ~reorder(category_name, total), x = ~total, type = "bar",
             orientation = "h",
             marker = list(color = "#2563eb", cornerradius = 6),
@@ -4670,23 +5399,23 @@ server <- function(input, output, session) {
         bargap = 0.3
       )
   })
-
+  
   # ===========================
   # Regional Performance (Redesigned)
   # ===========================
   output$region_resolution_chart <- renderPlotly({
     df <- regional_perf()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     # Color gradient based on rate
     colors <- ifelse(df$resolution_rate >= 80, "#059669",
                      ifelse(df$resolution_rate >= 60, "#f59e0b", "#dc2626"))
-
+    
     plot_ly(df, x = ~reorder(region_name, resolution_rate), y = ~resolution_rate,
             type = "bar", marker = list(color = colors, cornerradius = 6),
             text = ~paste0(resolution_rate, "%"), textposition = "outside",
             hovertemplate = paste0("<b>%{x}</b><br>Resolution Rate: %{y:.1f}%",
-                                  "<br>Total: %{customdata[0]}<br>Resolved: %{customdata[1]}<extra></extra>"),
+                                   "<br>Total: %{customdata[0]}<br>Resolved: %{customdata[1]}<extra></extra>"),
             customdata = ~cbind(total_cases, resolved_cases)) %>%
       layout(
         font = plotly_font,
@@ -4697,11 +5426,11 @@ server <- function(input, output, session) {
         bargap = 0.3
       )
   })
-
+  
   output$region_backlog_chart <- renderPlotly({
     df <- regional_perf()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     plot_ly(df, y = ~reorder(region_name, open_cases), x = ~open_cases,
             type = "bar", orientation = "h",
             marker = list(color = "#ef4444", cornerradius = 6),
@@ -4716,7 +5445,7 @@ server <- function(input, output, session) {
         bargap = 0.3
       )
   })
-
+  
   output$region_table <- renderDT({
     df <- regional_perf()
     datatable(
@@ -4738,26 +5467,26 @@ server <- function(input, output, session) {
                   color = styleInterval(c(5, 15), c("#059669", "#ea580c", "#dc2626")),
                   fontWeight = "bold")
   })
-
+  
   # ===========================
   # Category Trends (Redesigned)
   # ===========================
   output$category_trend_chart <- renderPlotly({
     df <- category_trends()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     top5 <- df %>%
       dplyr::group_by(category_name) %>%
       dplyr::summarise(total = sum(cases), .groups = "drop") %>%
       dplyr::arrange(dplyr::desc(total)) %>%
       dplyr::slice_head(n = 5)
-
+    
     df2 <- df %>%
       dplyr::inner_join(top5, by = "category_name") %>%
       dplyr::arrange(ym)
-
+    
     cat_colors <- c("#1e3a8a", "#dc2626", "#059669", "#ea580c", "#7c3aed")
-
+    
     p <- plot_ly()
     for (i in seq_len(nrow(top5))) {
       cat_name <- top5$category_name[i]
@@ -4767,7 +5496,7 @@ server <- function(input, output, session) {
                            line = list(color = cat_colors[i], width = 2.5),
                            marker = list(color = cat_colors[i], size = 6))
     }
-
+    
     p %>% layout(
       font = plotly_font,
       paper_bgcolor = "transparent", plot_bgcolor = "transparent",
@@ -4778,22 +5507,22 @@ server <- function(input, output, session) {
       hovermode = "x unified"
     )
   })
-
+  
   output$category_movement_table <- renderDT({
     df <- category_trends()
     if (nrow(df) == 0) return(datatable(data.frame()))
-
+    
     months_list <- sort(unique(df$ym))
     if (length(months_list) < 2) return(datatable(data.frame()))
-
+    
     m1 <- months_list[length(months_list)]
     m0 <- months_list[length(months_list) - 1]
-
+    
     cur <- df[df$ym == m1, c("category_name", "cases")]
     prev <- df[df$ym == m0, c("category_name", "cases")]
     names(cur)[2] <- "Current"
     names(prev)[2] <- "Previous"
-
+    
     movement <- dplyr::full_join(cur, prev, by = "category_name") %>%
       dplyr::mutate(
         Current  = dplyr::coalesce(Current, 0L),
@@ -4803,30 +5532,30 @@ server <- function(input, output, session) {
       ) %>%
       dplyr::arrange(dplyr::desc(Change)) %>%
       dplyr::slice_head(n = 10)
-
+    
     names(movement)[1] <- "Category"
-
+    
     datatable(movement, rownames = FALSE,
               options = list(dom = "t", autoWidth = TRUE, pageLength = 10)) %>%
       formatStyle("Change",
                   color = styleInterval(c(-0.5, 0.5), c("#dc2626", "#64748b", "#059669")),
                   fontWeight = "bold")
   })
-
+  
   output$category_trend_table <- renderDT({
     df <- category_trends()
     datatable(df, rownames = FALSE,
               colnames = c("Month", "Category", "Cases"),
               options = list(pageLength = 25, autoWidth = TRUE, dom = "ftip"))
   })
-
+  
   # ===========================
   # SLA Monitoring (Redesigned - Donut instead of Pie)
   # ===========================
   output$sla_overview_chart <- renderPlotly({
     s <- sla_data()$summary
     if (nrow(s) == 0) return(plotly_empty())
-
+    
     df <- data.frame(
       bucket = c("On Track", "Due Soon", "Overdue"),
       count  = c(
@@ -4835,10 +5564,10 @@ server <- function(input, output, session) {
         ifelse(is.na(s$overdue[1]), 0, s$overdue[1])
       )
     )
-
+    
     sla_colors <- c("#059669", "#f59e0b", "#dc2626")
     total <- sum(df$count)
-
+    
     plot_ly(df, labels = ~bucket, values = ~count, type = "pie",
             hole = 0.6, textinfo = "label+value", textposition = "outside",
             marker = list(colors = sla_colors, line = list(color = "#ffffff", width = 2)),
@@ -4855,11 +5584,11 @@ server <- function(input, output, session) {
         )
       )
   })
-
+  
   output$sla_region_chart <- renderPlotly({
     df <- sla_data()$by_region
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     plot_ly(df, x = ~region_name, y = ~on_track, type = "bar",
             name = "On Track", marker = list(color = "#059669")) %>%
       add_trace(y = ~due_soon, name = "Due Soon", marker = list(color = "#f59e0b")) %>%
@@ -4874,12 +5603,12 @@ server <- function(input, output, session) {
         legend = list(orientation = "h", x = 0, y = 1.12)
       )
   })
-
+  
   output$sla_overdue_count <- renderText({
     df <- sla_data()$overdue
     nrow(df)
   })
-
+  
   output$sla_overdue_table <- renderDT({
     df <- sla_data()$overdue
     datatable(df, rownames = FALSE,
@@ -4894,14 +5623,14 @@ server <- function(input, output, session) {
                                      c("#7c2d12", "#dc2626", "#ea580c", "#16a085")),
                   fontWeight = "bold")
   })
-
+  
   # ===========================
   # Time Series (Redesigned)
   # ===========================
   output$monthly_created_resolved_chart <- renderPlotly({
     df <- monthly_series()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     # Add area fill for visual richness
     plot_ly(df, x = ~ym) %>%
       add_trace(y = ~created, type = "scatter", mode = "lines+markers",
@@ -4924,15 +5653,15 @@ server <- function(input, output, session) {
         hovermode = "x unified"
       )
   })
-
+  
   output$monthly_avg_resolution_chart <- renderPlotly({
     df <- monthly_series()
     if (nrow(df) == 0) return(plotly_empty())
-
+    
     # Color bars by value (green = fast, red = slow)
     colors <- ifelse(df$avg_resolution_hours <= 24, "#059669",
                      ifelse(df$avg_resolution_hours <= 48, "#f59e0b", "#dc2626"))
-
+    
     plot_ly(df, x = ~ym, y = ~avg_resolution_hours, type = "bar",
             marker = list(color = colors, cornerradius = 4),
             text = ~paste0(avg_resolution_hours, "h"), textposition = "outside",
@@ -4946,7 +5675,7 @@ server <- function(input, output, session) {
         bargap = 0.3
       )
   })
-
+  
   output$monthly_trend_table <- renderDT({
     df <- monthly_series()
     datatable(df, rownames = FALSE,
@@ -4958,7 +5687,7 @@ server <- function(input, output, session) {
                   backgroundSize = "98% 80%", backgroundRepeat = "no-repeat",
                   backgroundPosition = "center")
   })
-
+  
   # ===========================
   # Export (updated to use filtered data)
   # ===========================
@@ -4966,23 +5695,23 @@ server <- function(input, output, session) {
     filename = function() paste0("helpline_analytics_", Sys.Date(), ".xlsx"),
     content = function(file) {
       wb <- createWorkbook()
-
+      
       addWorksheet(wb, "Regional Performance")
       writeData(wb, "Regional Performance", regional_perf())
-
+      
       addWorksheet(wb, "Category Trends")
       writeData(wb, "Category Trends", category_trends())
-
+      
       addWorksheet(wb, "SLA Summary")
       writeData(wb, "SLA Summary", sla_data()$summary)
       writeData(wb, "SLA Summary", sla_data()$by_region, startRow = 5)
-
+      
       addWorksheet(wb, "SLA Overdue")
       writeData(wb, "SLA Overdue", sla_data()$overdue)
-
+      
       addWorksheet(wb, "Time Series")
       writeData(wb, "Time Series", monthly_series())
-
+      
       saveWorkbook(wb, file, overwrite = TRUE)
     }
   )
@@ -5245,13 +5974,13 @@ server <- function(input, output, session) {
   # FOLLOW-UP SCHEDULING HANDLERS
   # ========================================
   
-  # Follow-up Alert Widget for Dashboard - uses cached stats
+  # Follow-up Alert Widget for Dashboard
   output$followup_alert_widget <- renderUI({
-    stats <- followup_stats()
-    if (stats$total == 0) return(NULL)
-
-    overdue_count <- stats$overdue
-    today_count <- stats$today
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return(NULL)
+    
+    overdue_count <- sum(data$urgency == "Overdue", na.rm = TRUE)
+    today_count <- sum(data$urgency == "Due Today", na.rm = TRUE)
     
     if (overdue_count == 0 && today_count == 0) return(NULL)
     
@@ -5335,42 +6064,50 @@ server <- function(input, output, session) {
     })
   })
   
-  # Pre-compute follow-up stats once so 8+ outputs share the result
-  followup_stats <- reactive({
+  # Follow-up counts (text outputs)
+  output$followup_overdue_count <- renderText({
     data <- follow_ups_data()
-    if (nrow(data) == 0) {
-      return(list(data = data, overdue = 0, today = 0, week = 0, total = 0))
-    }
-    list(
-      data = data,
-      overdue = sum(data$urgency == "Overdue", na.rm = TRUE),
-      today = sum(data$urgency == "Due Today", na.rm = TRUE),
-      week = sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE),
-      total = nrow(data)
-    )
+    if (nrow(data) == 0) return("0")
+    sum(data$urgency == "Overdue", na.rm = TRUE)
   })
-
-  # Follow-up counts (text outputs) - all use cached stats
-  output$followup_overdue_count <- renderText({ followup_stats()$overdue })
-  output$followup_today_count <- renderText({ followup_stats()$today })
-  output$followup_week_count <- renderText({ followup_stats()$week })
-  output$followup_total_pending <- renderText({ followup_stats()$total })
   
-  # Follow-up valueBox outputs (for Dashboard tab) - use cached stats
+  output$followup_today_count <- renderText({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return("0")
+    sum(data$urgency == "Due Today", na.rm = TRUE)
+  })
+  
+  output$followup_week_count <- renderText({
+    data <- follow_ups_data()
+    if (nrow(data) == 0) return("0")
+    sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
+  })
+  
+  output$followup_total_pending <- renderText({
+    nrow(follow_ups_data())
+  })
+  
+  # Follow-up valueBox outputs (for Dashboard tab)
   output$followup_overdue_box <- renderValueBox({
-    valueBox(followup_stats()$overdue, "Overdue", icon = icon("exclamation-triangle"), color = "red")
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Overdue", na.rm = TRUE)
+    valueBox(count, "Overdue", icon = icon("exclamation-triangle"), color = "red")
   })
-
+  
   output$followup_today_box <- renderValueBox({
-    valueBox(followup_stats()$today, "Due Today", icon = icon("calendar-day"), color = "yellow")
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(data$urgency == "Due Today", na.rm = TRUE)
+    valueBox(count, "Due Today", icon = icon("calendar-day"), color = "yellow")
   })
-
+  
   output$followup_week_box <- renderValueBox({
-    valueBox(followup_stats()$week, "This Week", icon = icon("calendar-week"), color = "blue")
+    data <- follow_ups_data()
+    count <- if (nrow(data) == 0) 0 else sum(as.Date(data$follow_up_date) <= Sys.Date() + 7 & as.Date(data$follow_up_date) >= Sys.Date(), na.rm = TRUE)
+    valueBox(count, "This Week", icon = icon("calendar-week"), color = "blue")
   })
-
+  
   output$followup_total_box <- renderValueBox({
-    valueBox(followup_stats()$total, "Total Pending", icon = icon("clock"), color = "purple")
+    valueBox(nrow(follow_ups_data()), "Total Pending", icon = icon("clock"), color = "purple")
   })
   
   # Follow-up region filter UI - region-restricted based on user role
@@ -5394,7 +6131,7 @@ server <- function(input, output, session) {
   # Pending follow-ups table with complete action
   # SECURITY: All user-supplied data is HTML-escaped to prevent XSS
   output$pending_followups_table <- DT::renderDataTable({
-    data <- followup_stats()$data
+    data <- follow_ups_data()
     if (nrow(data) == 0) return(datatable(data.frame(Message = "No pending follow-ups")))
     
     # Apply filters
@@ -5808,21 +6545,21 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_bulk_status, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
     new_status <- input$bulk_new_status
     notes <- input$bulk_status_notes
     uid <- current_user_id()
-
+    
     success_count <- tryCatch({
       poolWithTransaction(con(), function(conn) {
         # Build batch UPDATE with conditional timestamps
         placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
         timestamp_clause <- switch(new_status,
-          "Resolved" = ", resolved_at = IFNULL(resolved_at, NOW())",
-          "Closed"   = ", closed_at = IFNULL(closed_at, NOW())",
-          ""
+                                   "Resolved" = ", resolved_at = IFNULL(resolved_at, NOW())",
+                                   "Closed"   = ", closed_at = IFNULL(closed_at, NOW())",
+                                   ""
         )
         batch_q <- paste0(
           "UPDATE tickets SET status = ?, updated_at = NOW()", timestamp_clause,
@@ -5830,7 +6567,7 @@ server <- function(input, output, session) {
         )
         params <- c(list(new_status), as.list(as.integer(ticket_ids)))
         rows <- dbExecute(conn, batch_q, params = params)
-
+        
         # Batch insert action log entries
         if (rows > 0) {
           action_text <- if (!is.null(notes) && notes != "" && !is.na(notes)) {
@@ -5852,7 +6589,7 @@ server <- function(input, output, session) {
       showNotification(paste("Bulk update error:", e$message), type = "error")
       0L
     })
-
+    
     runjs("$('#bulkStatusModal').modal('hide');")
     showNotification(paste("Updated", success_count, "of", length(ticket_ids), "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
@@ -5869,10 +6606,10 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_bulk_priority, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
-
+    
     success_count <- tryCatch({
       placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
       batch_q <- paste0("UPDATE tickets SET priority = ?, updated_at = NOW() WHERE ticket_id IN (", placeholders, ")")
@@ -5882,7 +6619,7 @@ server <- function(input, output, session) {
       showNotification(paste("Bulk priority error:", e$message), type = "error")
       0L
     })
-
+    
     runjs("$('#bulkPriorityModal').modal('hide');")
     showNotification(paste("Updated priority for", success_count, "cases"), type = "message")
     shinyjs::click("refresh_all_cases")
@@ -5892,19 +6629,19 @@ server <- function(input, output, session) {
   observeEvent(input$bulk_escalate, {
     selected <- bulk_selected_cases()
     if (length(selected) == 0) return()
-
+    
     data <- all_cases_data()
     ticket_ids <- data$ticket_id[selected]
     uid <- current_user_id()
-
+    
     success_count <- tryCatch({
       poolWithTransaction(con(), function(conn) {
         placeholders <- paste(rep("?", length(ticket_ids)), collapse = ",")
-
+        
         # Batch update status
         batch_q <- paste0("UPDATE tickets SET status = 'Escalated', escalated_at = NOW(), updated_at = NOW() WHERE ticket_id IN (", placeholders, ")")
         rows <- dbExecute(conn, batch_q, params = as.list(as.integer(ticket_ids)))
-
+        
         # Batch insert action log
         if (rows > 0) {
           values_sql <- paste(rep("(?, ?, 'note', 'Bulk escalated for national review')", length(ticket_ids)), collapse = ",")
@@ -5921,7 +6658,7 @@ server <- function(input, output, session) {
       showNotification(paste("Bulk escalation error:", e$message), type = "error")
       0L
     })
-
+    
     showNotification(paste("Escalated", success_count, "cases"), type = "warning")
     shinyjs::click("refresh_all_cases")
   })
