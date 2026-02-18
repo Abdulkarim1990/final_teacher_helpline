@@ -225,6 +225,27 @@ CREATE TABLE IF NOT EXISTS escalations (
   CONSTRAINT fk_escalations_to_user FOREIGN KEY (escalated_to_user_id) REFERENCES users(user_id)
 );
 
+-- Escalation responses from National Office back to regions
+CREATE TABLE IF NOT EXISTS escalation_responses (
+  response_id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  ticket_id               BIGINT NOT NULL,
+  escalation_id           BIGINT NULL,
+  responded_by_user_id    INT NOT NULL,
+  response_text           TEXT NOT NULL,
+  responded_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  region_accepted         TINYINT(1) NOT NULL DEFAULT 0,
+  accepted_at             TIMESTAMP NULL,
+  accepted_by_user_id     INT NULL,
+  communicated_to_teacher TINYINT(1) NOT NULL DEFAULT 0,
+  communicated_at         TIMESTAMP NULL,
+  communicated_by_user_id INT NULL,
+
+  CONSTRAINT fk_esc_resp_ticket  FOREIGN KEY (ticket_id)               REFERENCES tickets(ticket_id) ON DELETE CASCADE,
+  CONSTRAINT fk_esc_resp_user    FOREIGN KEY (responded_by_user_id)    REFERENCES users(user_id),
+  CONSTRAINT fk_esc_resp_accept  FOREIGN KEY (accepted_by_user_id)     REFERENCES users(user_id),
+  CONSTRAINT fk_esc_resp_comm    FOREIGN KEY (communicated_by_user_id) REFERENCES users(user_id)
+);
+
 -- File attachments
 CREATE TABLE IF NOT EXISTS attachments (
   attachment_id      BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -325,6 +346,10 @@ CALL safe_create_index('idx_actions_type_date',   'ticket_actions', 'action_type
 -- Escalations indexes
 CALL safe_create_index('idx_escalations_ticket',          'escalations', 'ticket_id');
 CALL safe_create_index('idx_escalations_to_user_status',  'escalations', 'escalated_to_user_id, escalation_status');
+
+-- Escalation responses indexes
+CALL safe_create_index('idx_esc_resp_ticket',   'escalation_responses', 'ticket_id');
+CALL safe_create_index('idx_esc_resp_accepted', 'escalation_responses', 'ticket_id, region_accepted');
 
 -- Login audit indexes
 CALL safe_create_index('idx_login_audit_email', 'login_audit', 'email, attempted_at');
