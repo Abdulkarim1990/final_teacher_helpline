@@ -2136,7 +2136,7 @@ ui <- tagList(
                        uiOutput("escalation_popup_content"),
                        hr(),
                        tags$p("This case has been sent to the National PRO Office for review."),
-                       tags$p(tags$strong("Email notification sent to:"), " enquiry.nationalprooffice@gmail.com"),
+                       tags$p(tags$strong("Email notification sent to:"), " nationalprooffice@ges.gov.gh"),
                        br(),
                        fluidRow(
                          column(6,
@@ -2216,6 +2216,69 @@ ui <- tagList(
                      )
             ),
             
+            # ── National Office: Respond to Escalated Case Modal ──────────────────
+            tags$div(id = "nationalResponseModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog modal-lg", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-header", style = "background: #b45309; color: white;",
+                                                tags$h4(class = "modal-title", icon("reply"), " Respond to Escalated Case"),
+                                                tags$button(type = "button", class = "close", style = "color:white;", `data-dismiss` = "modal",
+                                                            tags$span("\u00d7"))
+                                       ),
+                                       tags$div(class = "modal-body",
+                                                uiOutput("national_response_case_info"),
+                                                tags$hr(),
+                                                textAreaInput("national_response_text",
+                                                              "Response to Region *",
+                                                              placeholder = "Provide guidance, instructions, or resolution notes for the region...",
+                                                              height = "140px",
+                                                              width = "100%"),
+                                                selectInput("national_response_status",
+                                                            "Update Case Status After Response",
+                                                            choices = c("Keep as Escalated" = "Escalated",
+                                                                        "Mark as Resolved" = "Resolved",
+                                                                        "Mark as In Progress" = "In Progress"))
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("submit_national_response",
+                                                             "Send Response to Region",
+                                                             class = "btn btn-warning",
+                                                             icon = icon("paper-plane")),
+                                                tags$button(type = "button", class = "btn btn-default",
+                                                            `data-dismiss` = "modal", "Cancel")
+                                       )
+                              )
+                     )
+            ),
+
+            # ── Regional User: View National Response Modal ────────────────────────
+            tags$div(id = "viewEscalationResponseModal", class = "modal fade", tabindex = "-1", role = "dialog",
+                     tags$div(class = "modal-dialog modal-lg", role = "document",
+                              tags$div(class = "modal-content",
+                                       tags$div(class = "modal-header", style = "background: #1e3a8a; color: white;",
+                                                tags$h4(class = "modal-title", icon("envelope-open-text"), " National Office Response"),
+                                                tags$button(type = "button", class = "close", style = "color:white;", `data-dismiss` = "modal",
+                                                            tags$span("\u00d7"))
+                                       ),
+                                       tags$div(class = "modal-body",
+                                                uiOutput("regional_response_view_content")
+                                       ),
+                                       tags$div(class = "modal-footer",
+                                                actionButton("accept_esc_response_btn",
+                                                             "Accept Response",
+                                                             class = "btn btn-success",
+                                                             icon = icon("check-circle")),
+                                                actionButton("mark_communicated_btn",
+                                                             "Mark as Communicated to Teacher/Caller",
+                                                             class = "btn btn-info",
+                                                             icon = icon("user-check")),
+                                                tags$button(type = "button", class = "btn btn-default",
+                                                            `data-dismiss` = "modal", "Close")
+                                       )
+                              )
+                     )
+            ),
+
             tabItems(
               # Dashboard Tab with sub-tabs
               tabItem(
@@ -2448,6 +2511,14 @@ ui <- tagList(
                     )
                   ),
                   
+                  # Escalation Updates Tab (responses from National Office back to regions)
+                  tabPanel(
+                    title = uiOutput("escalation_updates_tab_title"),
+                    value = "escalation_updates_panel",
+                    br(),
+                    uiOutput("escalation_updates_panel")
+                  ),
+
                   # Escalated Cases Tab (Only for National PRO Office)
                   tabPanel(
                     title = uiOutput("escalated_tab_title"),
@@ -5008,7 +5079,7 @@ server <- function(input, output, session) {
       add_case_note(con(), selected_case_id(), paste("ESCALATED (Level", level, "):", reason), uid)
       
       # Insert into escalations table
-      national_pro_user <- dbGetQuery(con(), "SELECT user_id FROM users WHERE email = 'enquiry.nationalprooffice@gmail.com' LIMIT 1")
+      national_pro_user <- dbGetQuery(con(), "SELECT user_id FROM users WHERE email = 'nationalprooffice@ges.gov.gh' LIMIT 1")
       if (nrow(national_pro_user) > 0) {
         dbExecute(con(),
                   "INSERT INTO escalations (ticket_id, escalated_by_user_id, escalated_to_user_id, escalation_reason, escalation_method) VALUES (?, ?, ?, ?, 'System')",
@@ -5853,7 +5924,8 @@ server <- function(input, output, session) {
   # Check if user is National PRO Office
   is_national_pro <- reactive({
     if (!isTRUE(rv$logged_in) || is.null(rv$user)) return(FALSE)
-    rv$user$email == "enquiry.nationalprooffice@gmail.com" || rv$user$role == "National Admin"
+    rv$user$email %in% c("nationalprooffice@ges.gov.gh", "admin@ges.gov.gh") ||
+      rv$user$role == "National Admin"
   })
   
   # Escalated tab title - only shows for National PRO Office
@@ -5873,7 +5945,7 @@ server <- function(input, output, session) {
             icon("lock", style = "font-size: 48px; color: #6b7280;"),
             h4("Access Restricted", style = "color: #374151; margin-top: 20px;"),
             p("Escalated cases are managed by the National PRO Office.", style = "color: #6b7280;"),
-            p("If you need to view escalated cases, please contact: ", tags$strong("enquiry.nationalprooffice@gmail.com"))
+            p("If you need to view escalated cases, please contact: ", tags$strong("nationalprooffice@ges.gov.gh"))
         )
       )
     }
@@ -5917,7 +5989,7 @@ server <- function(input, output, session) {
           withSpinner(DT::dataTableOutput("escalated_cases_table")),
           
           hr(),
-          p(tags$small("All escalations are sent to enquiry.nationalprooffice@gmail.com", style = "color: #6b7280;"))
+          p(tags$small("All escalations are sent to nationalprooffice@ges.gov.gh", style = "color: #6b7280;"))
         )
       )
     )
@@ -6029,15 +6101,16 @@ server <- function(input, output, session) {
         summary = escape_html_vec(summary),
         case_code = paste0('<span class="case-code" onclick="Shiny.setInputValue(\'view_case_id\', ', ticket_id, ', {priority: \'event\'});">', escape_html_vec(case_code), '</span>'),
         priority = paste0('<span class="priority-', tolower(escape_html_vec(priority)), '">', escape_html_vec(priority), '</span>'),
-        hours_since_escalation = paste(hours_since_escalation, "hours ago")
+        hours_since_escalation = paste(hours_since_escalation, "hours ago"),
+        action = paste0('<button class="btn btn-sm btn-warning" onclick="Shiny.setInputValue(\'esc_respond_ticket_id\', ', ticket_id, ', {priority: \'event\'})"><i class=\"fa fa-reply\"></i> Respond</button>')
       ) %>%
-      select(case_code, escalated_at, teacher_name, region_name, category_name, priority, hours_since_escalation, summary)
-    
+      select(case_code, escalated_at, teacher_name, region_name, category_name, priority, hours_since_escalation, summary, action)
+
     datatable(display_data,
               options = list(pageLength = 15, scrollX = TRUE, order = list(list(1, 'desc'))),
               escape = FALSE, rownames = FALSE,
               selection = 'single',
-              colnames = c("Case", "Escalated At", "Teacher", "Region", "Category", "Priority", "Time Since", "Summary"))
+              colnames = c("Case", "Escalated At", "Teacher", "Region", "Category", "Priority", "Time Since", "Summary", "Action"))
   }, server = TRUE)
   
   # Update region filter choices for escalated cases
@@ -6055,6 +6128,390 @@ server <- function(input, output, session) {
   })
   
   
+  # ========================================
+  # ESCALATION RESPONSE WORKFLOW HANDLERS
+  # ========================================
+
+  # Tracks which ticket the national officer is responding to
+  esc_respond_ticket_id <- reactiveVal(NULL)
+  # Tracks which response the regional user is viewing
+  esc_viewing_response_id <- reactiveVal(NULL)
+  # Counter to trigger refresh of escalation_updates_data
+  esc_updates_refresh_counter <- reactiveVal(0)
+
+  # ── National Office: open respond modal ──────────────────────────────────
+  observeEvent(input$esc_respond_ticket_id, {
+    req(is_national_pro())
+    esc_respond_ticket_id(input$esc_respond_ticket_id)
+    updateTextAreaInput(session, "national_response_text", value = "")
+    updateSelectInput(session, "national_response_status", selected = "Escalated")
+    runjs("$('#nationalResponseModal').modal('show');")
+  })
+
+  # Render case info banner inside the national response modal
+  output$national_response_case_info <- renderUI({
+    tid <- esc_respond_ticket_id()
+    req(tid)
+    case <- tryCatch(
+      dbGetQuery(con(),
+        "SELECT t.case_code, t.teacher_name, t.escalation_reason, t.escalated_at,
+                r.region_name, c.category_name, t.priority
+         FROM tickets t
+         LEFT JOIN regions r ON t.region_id = r.region_id
+         LEFT JOIN issue_categories c ON t.category_id = c.category_id
+         WHERE t.ticket_id = ?",
+        params = list(tid)),
+      error = function(e) data.frame())
+    if (nrow(case) == 0) return(p("Unable to load case details."))
+    div(class = "well well-sm",
+      fluidRow(
+        column(4, tags$strong("Case Code:"), tags$br(), escape_html(case$case_code[1])),
+        column(4, tags$strong("Region:"),    tags$br(), escape_html(case$region_name[1])),
+        column(4, tags$strong("Priority:"),  tags$br(), escape_html(case$priority[1]))
+      ),
+      fluidRow(
+        column(6, tags$strong("Teacher:"),  tags$br(), escape_html(case$teacher_name[1])),
+        column(6, tags$strong("Category:"), tags$br(), escape_html(case$category_name[1]))
+      ),
+      tags$hr(),
+      tags$strong("Escalation Reason:"),
+      tags$p(style = "white-space: pre-wrap; color: #374151;", escape_html(case$escalation_reason[1] %or% "(none provided)"))
+    )
+  })
+
+  # ── National Office: submit response ─────────────────────────────────────
+  observeEvent(input$submit_national_response, {
+    req(is_national_pro())
+    tid <- esc_respond_ticket_id()
+    req(tid)
+    resp_text <- trimws(input$national_response_text)
+    if (nchar(resp_text) < 5) {
+      showNotification("Please enter a response (at least 5 characters).", type = "warning")
+      return()
+    }
+    uid <- current_user_id()
+    new_status <- input$national_response_status
+
+    # Fetch the latest escalation_id for this ticket (if any)
+    esc_row <- tryCatch(
+      dbGetQuery(con(),
+        "SELECT escalation_id FROM escalations WHERE ticket_id = ? ORDER BY escalated_at DESC LIMIT 1",
+        params = list(tid)),
+      error = function(e) data.frame())
+    esc_id <- if (nrow(esc_row) > 0) esc_row$escalation_id[1] else NA
+
+    success <- tryCatch({
+      # 1. Insert response record
+      if (is.na(esc_id)) {
+        dbExecute(con(),
+          "INSERT INTO escalation_responses (ticket_id, responded_by_user_id, response_text)
+           VALUES (?, ?, ?)",
+          params = list(tid, uid, resp_text))
+      } else {
+        dbExecute(con(),
+          "INSERT INTO escalation_responses (ticket_id, escalation_id, responded_by_user_id, response_text)
+           VALUES (?, ?, ?, ?)",
+          params = list(tid, esc_id, uid, resp_text))
+        # Update escalation_status to 'In Review'
+        dbExecute(con(),
+          "UPDATE escalations SET escalation_status = 'In Review' WHERE escalation_id = ?",
+          params = list(esc_id))
+      }
+      # 2. Update ticket status if changed
+      if (new_status != "Escalated") {
+        dbExecute(con(),
+          "UPDATE tickets SET status = ?, updated_at = NOW() WHERE ticket_id = ?",
+          params = list(new_status, tid))
+      }
+      # 3. Log the action
+      add_case_note(con(), tid,
+        paste0("NATIONAL RESPONSE SENT: ", substr(resp_text, 1, 200)),
+        uid)
+      TRUE
+    }, error = function(e) { message("Escalation response error: ", e$message); FALSE })
+
+    if (success) {
+      runjs("$('#nationalResponseModal').modal('hide');")
+      esc_respond_ticket_id(NULL)
+      showNotification("Response sent to the region successfully.", type = "message")
+      # Refresh escalated cases data
+      shinyjs::click("refresh_escalated")
+    } else {
+      showNotification("Failed to save response. Please try again.", type = "error")
+    }
+  })
+
+  # ── Regional users: escalation updates data ──────────────────────────────
+  escalation_updates_data <- reactive({
+    esc_updates_refresh_counter()  # refresh dependency
+    input$refresh_esc_updates      # also respond to manual button if rendered
+    forced_region <- user_region_id()
+
+    tryCatch({
+      if (!is.null(forced_region)) {
+        # Regional users see responses for cases from their region only
+        dbGetQuery(con(),
+          "SELECT er.response_id, er.ticket_id, er.response_text, er.responded_at,
+                  er.region_accepted, er.accepted_at,
+                  er.communicated_to_teacher, er.communicated_at,
+                  t.case_code, t.teacher_name, t.escalation_reason, t.priority,
+                  r.region_name, c.category_name,
+                  u.full_name AS responded_by
+           FROM escalation_responses er
+           JOIN tickets t ON er.ticket_id = t.ticket_id
+           LEFT JOIN regions r ON t.region_id = r.region_id
+           LEFT JOIN issue_categories c ON t.category_id = c.category_id
+           LEFT JOIN users u ON er.responded_by_user_id = u.user_id
+           WHERE t.region_id = ?
+           ORDER BY er.responded_at DESC",
+          params = list(forced_region))
+      } else {
+        # National users see all responses
+        dbGetQuery(con(),
+          "SELECT er.response_id, er.ticket_id, er.response_text, er.responded_at,
+                  er.region_accepted, er.accepted_at,
+                  er.communicated_to_teacher, er.communicated_at,
+                  t.case_code, t.teacher_name, t.escalation_reason, t.priority,
+                  r.region_name, c.category_name,
+                  u.full_name AS responded_by
+           FROM escalation_responses er
+           JOIN tickets t ON er.ticket_id = t.ticket_id
+           LEFT JOIN regions r ON t.region_id = r.region_id
+           LEFT JOIN issue_categories c ON t.category_id = c.category_id
+           LEFT JOIN users u ON er.responded_by_user_id = u.user_id
+           ORDER BY er.responded_at DESC")
+      }
+    }, error = function(e) data.frame())
+  })
+
+  # Tab title with badge count for pending (not yet accepted) responses
+  output$escalation_updates_tab_title <- renderUI({
+    data <- escalation_updates_data()
+    pending <- if (nrow(data) == 0) 0 else sum(data$region_accepted == 0, na.rm = TRUE)
+    if (pending > 0) {
+      tagList(icon("inbox"), " Escalation Updates ",
+              tags$span(class = "badge badge-danger", pending))
+    } else {
+      tagList(icon("inbox"), " Escalation Updates")
+    }
+  })
+
+  # ── Panel rendered for the Escalation Updates tab ────────────────────────
+  output$escalation_updates_panel <- renderUI({
+    if (!isTRUE(rv$logged_in)) return(NULL)
+    data <- escalation_updates_data()
+
+    header_text <- if (!is.null(user_region_id())) {
+      "Responses from the National Office to your region's escalated cases"
+    } else {
+      "All escalation responses sent to regions"
+    }
+
+    tagList(
+      fluidRow(
+        column(12,
+          div(style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); border-radius: 8px;",
+            div(style = "color: white;",
+              icon("inbox", style = "margin-right: 8px;"),
+              tags$span("Escalation Updates", style = "font-weight: 600; font-size: 16px;"),
+              tags$small(header_text, style = "margin-left: 12px; opacity: 0.8;")
+            ),
+            actionButton("refresh_esc_updates", "Refresh",
+                         class = "btn btn-light btn-sm", icon = icon("sync"))
+          )
+        )
+      ),
+      if (nrow(data) == 0) {
+        fluidRow(column(12,
+          div(style = "text-align: center; padding: 40px;",
+            icon("check-circle", style = "font-size: 48px; color: #16a085;"),
+            h4("No escalation responses yet", style = "margin-top: 15px; color: #374151;"),
+            p("When the National Office responds to an escalated case, it will appear here.",
+              style = "color: #6b7280;")
+          )
+        ))
+      } else {
+        fluidRow(
+          box(
+            title = "National Office Responses", status = "primary", solidHeader = TRUE,
+            width = 12,
+            withSpinner(DT::dataTableOutput("escalation_updates_table"))
+          )
+        )
+      }
+    )
+  })
+
+  # Table of escalation responses for regional users
+  output$escalation_updates_table <- DT::renderDataTable({
+    data <- escalation_updates_data()
+    if (nrow(data) == 0) return(datatable(data.frame(Message = "No responses yet")))
+
+    display <- data %>%
+      mutate(
+        responded_at = format(as.POSIXct(responded_at), "%Y-%m-%d %H:%M"),
+        case_code    = escape_html_vec(case_code),
+        teacher_name = escape_html_vec(teacher_name),
+        region_name  = escape_html_vec(region_name),
+        category_name = escape_html_vec(category_name),
+        responded_by = escape_html_vec(responded_by),
+        response_preview = paste0(substr(escape_html_vec(response_text), 1, 80), "\u2026"),
+        accepted_status = ifelse(region_accepted == 1, '<span class="label label-success">Accepted</span>',
+                                 '<span class="label label-warning">Pending</span>'),
+        comm_status = ifelse(communicated_to_teacher == 1,
+                             '<span class="label label-success">Communicated</span>',
+                             '<span class="label label-default">Not Yet</span>'),
+        view_btn = paste0('<button class="btn btn-sm btn-primary" onclick="Shiny.setInputValue(\'view_esc_response_id\', ', response_id, ', {priority: \'event\'})"><i class=\"fa fa-eye\"></i> View</button>')
+      ) %>%
+      select(case_code, responded_at, region_name, category_name, responded_by,
+             response_preview, accepted_status, comm_status, view_btn)
+
+    datatable(display,
+              options = list(pageLength = 15, scrollX = TRUE, order = list(list(1, 'desc'))),
+              escape = FALSE, rownames = FALSE,
+              colnames = c("Case", "Response Received", "Region", "Category", "Responded By",
+                           "Response Preview", "Accepted", "Communicated", "Action"))
+  }, server = TRUE)
+
+  # ── Regional user: open view response modal ───────────────────────────────
+  observeEvent(input$view_esc_response_id, {
+    esc_viewing_response_id(input$view_esc_response_id)
+    runjs("$('#viewEscalationResponseModal').modal('show');")
+  })
+
+  # Render content inside the regional view modal
+  output$regional_response_view_content <- renderUI({
+    rid <- esc_viewing_response_id()
+    req(rid)
+    row <- tryCatch(
+      dbGetQuery(con(),
+        "SELECT er.response_id, er.response_text, er.responded_at,
+                er.region_accepted, er.accepted_at,
+                er.communicated_to_teacher, er.communicated_at,
+                t.case_code, t.teacher_name, t.escalation_reason, t.priority,
+                r.region_name, c.category_name,
+                u.full_name AS responded_by
+         FROM escalation_responses er
+         JOIN tickets t ON er.ticket_id = t.ticket_id
+         LEFT JOIN regions r ON t.region_id = r.region_id
+         LEFT JOIN issue_categories c ON t.category_id = c.category_id
+         LEFT JOIN users u ON er.responded_by_user_id = u.user_id
+         WHERE er.response_id = ?",
+        params = list(rid)),
+      error = function(e) data.frame())
+
+    if (nrow(row) == 0) return(p("Response not found."))
+
+    accepted_badge <- if (isTRUE(row$region_accepted[1] == 1)) {
+      tags$span(class = "label label-success", icon("check"), " Accepted")
+    } else {
+      tags$span(class = "label label-warning", " Pending Acceptance")
+    }
+    comm_badge <- if (isTRUE(row$communicated_to_teacher[1] == 1)) {
+      tags$span(class = "label label-success", icon("user-check"), " Communicated")
+    } else {
+      tags$span(class = "label label-default", " Not Communicated Yet")
+    }
+
+    tagList(
+      div(class = "well well-sm",
+        fluidRow(
+          column(4, tags$strong("Case:"),    tags$br(), escape_html(row$case_code[1])),
+          column(4, tags$strong("Region:"),  tags$br(), escape_html(row$region_name[1])),
+          column(4, tags$strong("Priority:"), tags$br(), escape_html(row$priority[1]))
+        ),
+        fluidRow(
+          column(6, tags$strong("Teacher:"),       tags$br(), escape_html(row$teacher_name[1])),
+          column(6, tags$strong("Responded By:"),  tags$br(), escape_html(row$responded_by[1]))
+        ),
+        tags$hr(),
+        tags$strong("Your Escalation Reason:"),
+        tags$p(style = "white-space: pre-wrap; color: #374151;",
+               escape_html(row$escalation_reason[1] %or% "(none provided)"))
+      ),
+      div(style = "padding: 15px; background: #fffbeb; border-left: 4px solid #b45309; border-radius: 4px; margin-bottom: 15px;",
+        tags$strong(icon("reply"), " National Office Response:"),
+        tags$p(style = "white-space: pre-wrap; margin-top: 10px; color: #1e3a8a;",
+               escape_html(row$response_text[1]))
+      ),
+      fluidRow(
+        column(6, tags$strong("Status:"), tags$br(), accepted_badge),
+        column(6, tags$strong("Communication:"), tags$br(), comm_badge)
+      )
+    )
+  })
+
+  # ── Regional user: accept response ───────────────────────────────────────
+  observeEvent(input$accept_esc_response_btn, {
+    rid <- esc_viewing_response_id()
+    req(rid)
+    uid <- current_user_id()
+
+    # Check if already accepted
+    current <- tryCatch(
+      dbGetQuery(con(), "SELECT region_accepted FROM escalation_responses WHERE response_id = ?",
+                 params = list(rid)),
+      error = function(e) data.frame())
+    if (nrow(current) > 0 && isTRUE(current$region_accepted[1] == 1)) {
+      showNotification("This response has already been accepted.", type = "warning")
+      return()
+    }
+
+    ok <- tryCatch({
+      dbExecute(con(),
+        "UPDATE escalation_responses
+         SET region_accepted = 1, accepted_at = NOW(), accepted_by_user_id = ?
+         WHERE response_id = ?",
+        params = list(uid, rid))
+      TRUE
+    }, error = function(e) FALSE)
+
+    if (ok) {
+      showNotification("Response accepted successfully.", type = "message")
+      runjs("$('#viewEscalationResponseModal').modal('hide');")
+      esc_viewing_response_id(NULL)
+      esc_updates_refresh_counter(esc_updates_refresh_counter() + 1)
+    } else {
+      showNotification("Failed to accept response. Please try again.", type = "error")
+    }
+  })
+
+  # ── Regional user: mark communicated to teacher ───────────────────────────
+  observeEvent(input$mark_communicated_btn, {
+    rid <- esc_viewing_response_id()
+    req(rid)
+    uid <- current_user_id()
+
+    # Check if already marked
+    current <- tryCatch(
+      dbGetQuery(con(), "SELECT communicated_to_teacher FROM escalation_responses WHERE response_id = ?",
+                 params = list(rid)),
+      error = function(e) data.frame())
+    if (nrow(current) > 0 && isTRUE(current$communicated_to_teacher[1] == 1)) {
+      showNotification("This has already been marked as communicated.", type = "warning")
+      return()
+    }
+
+    ok <- tryCatch({
+      dbExecute(con(),
+        "UPDATE escalation_responses
+         SET communicated_to_teacher = 1, communicated_at = NOW(), communicated_by_user_id = ?
+         WHERE response_id = ?",
+        params = list(uid, rid))
+      TRUE
+    }, error = function(e) FALSE)
+
+    if (ok) {
+      showNotification("Marked as communicated to teacher/caller.", type = "message")
+      runjs("$('#viewEscalationResponseModal').modal('hide');")
+      esc_viewing_response_id(NULL)
+      esc_updates_refresh_counter(esc_updates_refresh_counter() + 1)
+    } else {
+      showNotification("Failed to update. Please try again.", type = "error")
+    }
+  })
+
+
   # ========================================
   # FOLLOW-UP SCHEDULING HANDLERS
   # ========================================
