@@ -472,6 +472,26 @@ INSERT IGNORE INTO issue_subcategories (category_id, subcategory_code, subcatego
 ((SELECT category_id FROM issue_categories WHERE category_code = 'OTHER'), 'OTHER_GEN', 'Not classified (review weekly)');
 
 
+
+
+INSERT IGNORE INTO issue_subcategories (category_id, subcategory_code, subcategory_name) VALUES
+
+((SELECT category_id FROM issue_categories WHERE category_code = 'HR'),     'HR_OTHER',    'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'DEPLOY'), 'DEP_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'PAY'),    'PAY_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'LIC'),    'LIC_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'TLI'),    'TLI_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'ADMIN'),  'ADM_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'WEL'),    'WEL_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'DISC'),   'DISC_OTHER',  'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'PART'),   'PART_OTHER',  'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'SEC'),    'SEC_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'BASIC'),  'BAS_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'ICT'),    'ICT_OTHER',   'Other (not listed)'),
+((SELECT category_id FROM issue_categories WHERE category_code = 'INFO'),   'INFO_OTHER',  'Other (not listed)')
+;
+
+
 -- #############################################################################
 -- SECTION 8: SEED DATA - STAFF ACCOUNTS
 -- Bcrypt hash below corresponds to default initial password.
@@ -480,25 +500,25 @@ INSERT IGNORE INTO issue_subcategories (category_id, subcategory_code, subcatego
 
 -- Regional Coordinator accounts (one per region)
 INSERT INTO users (full_name, email, role, region_id, password_hash, is_active) VALUES
-('Greater Accra Regional Coordinator',  'enquiry.greateraccraregion@gmail.com',  'Regional Supervisor', 1,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Ashanti Regional Coordinator',        'enquiry.ashantiregion@gmail.com',       'Regional Supervisor', 2,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Western Regional Coordinator',        'enquiry.westernregion@gmail.com',       'Regional Supervisor', 3,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Eastern Regional Coordinator',        'enquiry.easternregion@gmail.com',       'Regional Supervisor', 4,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Central Regional Coordinator',        'enquiry.centralregion@gmail.com',       'Regional Supervisor', 5,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Northern Regional Coordinator',       'enquiry.northernregion@gmail.com',      'Regional Supervisor', 6,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Upper East Regional Coordinator',     'enquiry.ueastregion@gmail.com',         'Regional Supervisor', 7,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Upper West Regional Coordinator',     'enquiry.uwestregion@gmail.com',         'Regional Supervisor', 8,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Volta Regional Coordinator',          'enquiry.voltaregion@gmail.com',         'Regional Supervisor', 9,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Bono Regional Coordinator',           'enquiry.bonoregion@gmail.com',          'Regional Supervisor', 10, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Western North Regional Coordinator',  'enquiry.westernnorthregion@gmail.com',  'Regional Supervisor', 11, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Ahafo Regional Coordinator',          'enquiry.ahaforegion@gmail.com',         'Regional Supervisor', 12, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Bono East Regional Coordinator',      'enquiry.bonoeastregion@gmail.com',      'Regional Supervisor', 13, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Oti Regional Coordinator',            'enquiry.otiregion@gmail.com',           'Regional Supervisor', 14, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('North East Regional Coordinator',     'enquiry.northeastregion@gmail.com',     'Regional Supervisor', 15, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('Savannah Regional Coordinator',       'enquiry.savannahregion@gmail.com',      'Regional Supervisor', 16, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Greater Accra Regional Coordinator',  'greateraccra@ges.gov.gh',  'Regional Supervisor', 1,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Ashanti Regional Coordinator',        'ashanti@ges.gov.gh',       'Regional Supervisor', 2,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Western Regional Coordinator',        'western@ges.gov.gh',       'Regional Supervisor', 3,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Eastern Regional Coordinator',        'eastern@ges.gov.gh',       'Regional Supervisor', 4,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Central Regional Coordinator',        'central@ges.gov.gh',       'Regional Supervisor', 5,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Northern Regional Coordinator',       'northern@ges.gov.gh',      'Regional Supervisor', 6,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Upper East Regional Coordinator',     'uppereast@ges.gov.gh',         'Regional Supervisor', 7,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Upper West Regional Coordinator',     'upperwest@ges.gov.gh',         'Regional Supervisor', 8,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Volta Regional Coordinator',          'volta@ges.gov.gh',         'Regional Supervisor', 9,  '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Bono Regional Coordinator',           'bono@ges.gov.gh',          'Regional Supervisor', 10, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Western North Regional Coordinator',  'westernnorth@ges.gov.gh',  'Regional Supervisor', 11, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Ahafo Regional Coordinator',          'ahafo@ges.gov.gh',         'Regional Supervisor', 12, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Bono East Regional Coordinator',      'bonoeast@ges.gov.gh',      'Regional Supervisor', 13, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Oti Regional Coordinator',            'oti@ges.gov.gh',           'Regional Supervisor', 14, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('North East Regional Coordinator',     'northeast@ges.gov.gh',     'Regional Supervisor', 15, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('Savannah Regional Coordinator',       'savannah@ges.gov.gh',      'Regional Supervisor', 16, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
 -- National staff (no region)
-('System Administrator',                'enquiry.admin@gmail.com',               'National Admin',    NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
-('National PRO Office',                 'enquiry.nationalprooffice@gmail.com',   'National Resolver', NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1)
+('System Administrator',                'admin@ges.gov.gh',               'National Admin',    NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1),
+('National PRO Office',                 'nationalprooffice@ges.gov.gh',   'National Resolver', NULL, '$2a$12$.0q2ipjKMgSpgOQ5MxkJ1OzUllcJ4m.7cx300mqSxiKXkaNgdP8pK', 1)
 ON DUPLICATE KEY UPDATE
   full_name     = VALUES(full_name),
   role          = VALUES(role),
@@ -508,30 +528,26 @@ ON DUPLICATE KEY UPDATE
 
 -- Allowlist: ensure all staff emails can log in
 INSERT IGNORE INTO login_allowlist (email, is_active, notes) VALUES
-('enquiry.greateraccraregion@gmail.com',  TRUE, 'Greater Accra Regional Coordinator'),
-('enquiry.ashantiregion@gmail.com',       TRUE, 'Ashanti Regional Coordinator'),
-('enquiry.westernregion@gmail.com',       TRUE, 'Western Regional Coordinator'),
-('enquiry.easternregion@gmail.com',       TRUE, 'Eastern Regional Coordinator'),
-('enquiry.centralregion@gmail.com',       TRUE, 'Central Regional Coordinator'),
-('enquiry.northernregion@gmail.com',      TRUE, 'Northern Regional Coordinator'),
-('enquiry.ueastregion@gmail.com',         TRUE, 'Upper East Regional Coordinator'),
-('enquiry.uwestregion@gmail.com',         TRUE, 'Upper West Regional Coordinator'),
-('enquiry.voltaregion@gmail.com',         TRUE, 'Volta Regional Coordinator'),
-('enquiry.bonoregion@gmail.com',          TRUE, 'Bono Regional Coordinator'),
-('enquiry.westernnorthregion@gmail.com',  TRUE, 'Western North Regional Coordinator'),
-('enquiry.ahaforegion@gmail.com',         TRUE, 'Ahafo Regional Coordinator'),
-('enquiry.bonoeastregion@gmail.com',      TRUE, 'Bono East Regional Coordinator'),
-('enquiry.otiregion@gmail.com',           TRUE, 'Oti Regional Coordinator'),
-('enquiry.northeastregion@gmail.com',     TRUE, 'North East Regional Coordinator'),
-('enquiry.savannahregion@gmail.com',      TRUE, 'Savannah Regional Coordinator'),
-('enquiry.admin@gmail.com',              TRUE, 'System Administrator - National Admin'),
-('enquiry.nationalprooffice@gmail.com',  TRUE, 'National PRO Office - escalated cases');
+('greateraccra@ges.gov.gh',  TRUE, 'Greater Accra Regional Coordinator'),
+('ashanti@ges.gov.gh',       TRUE, 'Ashanti Regional Coordinator'),
+('western@ges.gov.gh',       TRUE, 'Western Regional Coordinator'),
+('eastern@ges.gov.gh',       TRUE, 'Eastern Regional Coordinator'),
+('central@ges.gov.gh',       TRUE, 'Central Regional Coordinator'),
+('northern@ges.gov.gh',      TRUE, 'Northern Regional Coordinator'),
+('uppereast@ges.gov.gh',         TRUE, 'Upper East Regional Coordinator'),
+('upperwest@ges.gov.gh',         TRUE, 'Upper West Regional Coordinator'),
+('volta@ges.gov.gh',         TRUE, 'Volta Regional Coordinator'),
+('bono@ges.gov.gh',          TRUE, 'Bono Regional Coordinator'),
+('westernnorth@ges.gov.gh',  TRUE, 'Western North Regional Coordinator'),
+('enquiry.ahaforegion@ges.gov.gh',         TRUE, 'Ahafo Regional Coordinator'),
+('bonoeast@ges.gov.gh',      TRUE, 'Bono East Regional Coordinator'),
+('oti@ges.gov.gh',           TRUE, 'Oti Regional Coordinator'),
+('northeast@ges.gov.gh',     TRUE, 'North East Regional Coordinator'),
+('savannah@ges.gov.gh',      TRUE, 'Savannah Regional Coordinator'),
+('admin@ges.gov.gh',              TRUE, 'System Administrator - National Admin'),
+('nationalprooffice@ges.gov.gh',  TRUE, 'National PRO Office - escalated cases');
 
--- SECURITY CLEANUP: Remove the old sample users with invalid password hashes
--- These had $2y$ hashes (PHP bcrypt format) which are incompatible with R's bcrypt package,
--- and one had a plaintext password. They should not exist in the system.
-DELETE FROM users WHERE email IN ('john.doe@ges.gov.gh', 'jane.smith@ges.gov.gh', 'robert.johnson@ges.gov.gh', 'admin@ges.gov.gh');
-DELETE FROM login_allowlist WHERE email IN ('john.doe@ges.gov.gh', 'jane.smith@ges.gov.gh', 'robert.johnson@ges.gov.gh', 'admin@ges.gov.gh');
+
 
 
 -- #############################################################################
