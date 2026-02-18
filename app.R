@@ -236,6 +236,7 @@ con <- function() {
 
 
 
+
 # Database helper functions
 get_regional_performance <- function(con, months_back = 12, region_id = NULL) {
   if (is.null(con)) return(data.frame())
@@ -3014,7 +3015,7 @@ server <- function(input, output, session) {
     invalidateLater(20000, session)  # every 20 seconds
     session$sendCustomMessage("keepalive", list(t = as.character(Sys.time())))
   })
-
+  
   # Receive client-to-server pings from the Web Worker keep-alive.
   # This is a no-op observer — simply receiving the input value is enough to
   # prove the connection is alive. We use observeEvent so it doesn't trigger
